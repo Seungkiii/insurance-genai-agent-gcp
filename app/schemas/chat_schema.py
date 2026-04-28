@@ -1,12 +1,14 @@
 """Chat-related request and response schemas."""
 
-from pydantic import BaseModel, Field
+from __future__ import annotations
+
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class ChatRequest(BaseModel):
     """Incoming chat request payload."""
 
-    query: str = Field(..., min_length=1)
+    question: str = Field(..., min_length=1, validation_alias=AliasChoices("question", "query"))
     session_id: str | None = None
 
 
@@ -24,7 +26,7 @@ class RecommendedDesign(BaseModel):
 
     product_group: str | None = None
     product_name: str | None = None
-    riders: list[str] = []
+    riders: list[str] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
@@ -36,7 +38,7 @@ class ChatResponse(BaseModel):
     recommended_design: RecommendedDesign | None = None
     citations: list[Citation]
     confidence_score: float
-    follow_up_questions: list[str]
+    follow_up_questions: list[str] = Field(default_factory=list)
     disclaimer: str
 
 
