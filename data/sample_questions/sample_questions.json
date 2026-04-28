@@ -1,0 +1,58 @@
+{
+  "policy_qa": [
+    {
+      "id": "policy-001",
+      "question": "Sample Care Plan에서 입원일당은 어떤 기준으로 지급되나요?"
+    },
+    {
+      "id": "policy-002",
+      "question": "미용 목적의 시술도 보장하는 손해에 포함되나요?"
+    },
+    {
+      "id": "policy-003",
+      "question": "진단보험금은 최초 몇 회까지 지급되나요?"
+    }
+  ],
+  "design_recommendation": [
+    {
+      "id": "recommend-001",
+      "question": "30대 여성에게 월납 기준으로 추천할 수 있는 synthetic sample 상품 조합을 알려줘."
+    },
+    {
+      "id": "recommend-002",
+      "question": "40대 남성의 보장금액 선호가 높은 경우 참고할 수 있는 가입설계 이력을 요약해줘."
+    },
+    {
+      "id": "recommend-003",
+      "question": "50대 고객에게 적합한 Sample 상품과 특약 방향을 제안해줘."
+    }
+  ],
+  "design_modification": [
+    {
+      "id": "modify-001",
+      "question": "기존 Sample Care Plan 설계에서 월 보험료 부담을 낮추기 위해 납입기간과 보장금액을 어떻게 조정할 수 있을까?"
+    },
+    {
+      "id": "modify-002",
+      "question": "Sample Life Plan 설계안에서 보장은 유지하면서 특약 구성을 단순화하는 방안을 제안해줘."
+    },
+    {
+      "id": "modify-003",
+      "question": "60대 고객 기준으로 보장기간은 유지하고 납입기간만 짧게 바꾸는 대안을 설명해줘."
+    }
+  ],
+  "claim_document": [
+    {
+      "id": "claim-001",
+      "question": "입원일당 청구를 위해 필요한 기본 서류를 알려줘."
+    },
+    {
+      "id": "claim-002",
+      "question": "수술급여금을 청구할 때 진단서 외에 어떤 서류가 추가로 필요할 수 있나요?"
+    },
+    {
+      "id": "claim-003",
+      "question": "사고 사실 확인이 필요한 경우 어떤 증빙 자료를 준비해야 하나요?"
+    }
+  ]
+}
