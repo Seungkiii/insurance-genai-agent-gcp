@@ -12,7 +12,7 @@ class AgentState(TypedDict, total=False):
     extracted_slots: dict[str, str]
     current_design: dict[str, str]
     retrieved_docs: list[dict[str, str]]
-    recommendation_result: dict[str, str]
+    recommendation_result: dict[str, object]
     confidence_score: float
     answer: str
     citations: list[dict[str, str]]
