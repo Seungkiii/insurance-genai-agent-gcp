@@ -1,0 +1,13 @@
+age_group,gender,product_name,rider_name,payment_period,insurance_period,payment_cycle,coverage_amount
+20s,F,Sample Starter Plan,Essential Care Rider,10 years,20 years,monthly,20000000
+20s,M,Sample Care Plan,Standard Hospital Rider,20 years,80 years,monthly,50000000
+30s,F,Sample Care Plan,Critical Diagnosis Rider,20 years,90 years,monthly,70000000
+30s,M,Sample Family Shield,Accident Support Rider,15 years,80 years,monthly,60000000
+40s,F,Sample Life Plan,Critical Diagnosis Rider,20 years,90 years,monthly,100000000
+40s,M,Sample Care Plan,Standard Hospital Rider,20 years,80 years,monthly,80000000
+50s,F,Sample Senior Balance,Daily Recovery Rider,10 years,85 years,monthly,30000000
+50s,M,Sample Life Plan,Critical Diagnosis Rider,15 years,85 years,monthly,90000000
+60s,F,Sample Senior Balance,Daily Recovery Rider,10 years,85 years,monthly,25000000
+60s,M,Sample Family Shield,Accident Support Rider,10 years,80 years,monthly,40000000
+30s,F,Sample Family Shield,Accident Support Rider,20 years,80 years,monthly,65000000
+40s,M,Sample Life Plan,Hospital Income Rider,20 years,90 years,monthly,110000000

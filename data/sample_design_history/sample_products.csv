@@ -1,0 +1,6 @@
+product_name,product_type,core_target,base_coverage,rider_name,default_payment_period,default_insurance_period,default_payment_cycle
+Sample Care Plan,Health,Hospitalization and treatment support,50000000,Standard Hospital Rider,20 years,80 years,monthly
+Sample Life Plan,Life,Life protection and family support,100000000,Critical Diagnosis Rider,20 years,90 years,monthly
+Sample Family Shield,Protection,Family-oriented risk protection,70000000,Accident Support Rider,15 years,80 years,monthly
+Sample Senior Balance,Senior,Senior healthcare support,30000000,Daily Recovery Rider,10 years,85 years,monthly
+Sample Starter Plan,Basic,Entry-level essential coverage,20000000,Essential Care Rider,10 years,20 years,monthly
