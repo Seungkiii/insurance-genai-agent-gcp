@@ -1,0 +1,72 @@
+name: Deploy Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGION: your-region
+  GAR_LOCATION: your-region-docker.pkg.dev
+  GAR_REPOSITORY: your-artifact-registry-repository
+  SERVICE_NAME: insurance-genai-agent-api
+  IMAGE_NAME: insurance-genai-agent-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker ${{ env.GAR_LOCATION }} --quiet
+
+      - name: Build image
+        run: |
+          docker build \
+            -t "${{ env.GAR_LOCATION }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+            .
+
+      - name: Push image
+        run: |
+          docker push \
+            "${{ env.GAR_LOCATION }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${{ env.SERVICE_NAME }}" \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="${{ env.REGION }}" \
+            --image="${{ env.GAR_LOCATION }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=8080 \
+            --cpu=1 \
+            --memory=512Mi \
+            --min-instances=0 \
+            --max-instances=2 \
+            --concurrency=10 \
+            --set-env-vars="ENVIRONMENT=prod" \
+            --update-secrets="VERTEX_AI_PROJECT_ID=vertex-ai-project-id:latest,VERTEX_AI_LOCATION=vertex-ai-location:latest,FIRESTORE_DATABASE=firestore-database:latest,GCS_BUCKET_NAME=gcs-bucket-name:latest"
+
+      - name: Show service URL
+        run: |
+          gcloud run services describe "${{ env.SERVICE_NAME }}" \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="${{ env.REGION }}" \
+            --format='value(status.url)'
