@@ -25,5 +25,6 @@ def run_recommendation_node(
     updated = dict(state)
     updated["recommendation_result"] = result.model_dump()
     updated["confidence_score"] = result.confidence_score
+    updated["fallback_reason"] = result.fallback_reason
     updated["next_action"] = "respond_recommendation"
     return updated
