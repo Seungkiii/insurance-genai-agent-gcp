@@ -57,7 +57,8 @@ class ChatResponse(BaseModel):
     session_id: str
     intent: str
     answer: str
-    recommended_design: RecommendedDesign | None = None
+    recommended_design: dict[str, object] | None = None
+    current_design: dict[str, object] | None = None
     citations: list[Citation]
     search_profile: str | None = None
     confidence_score: float
