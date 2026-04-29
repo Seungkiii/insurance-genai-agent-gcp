@@ -40,6 +40,8 @@ class FakeGenerator:
         retrieved_chunks: list[dict[str, Any]],
         citations: list[dict[str, Any]],
         recommended_design: dict[str, Any] | None,
+        recommended_products: list[dict[str, Any]],
+        comparison_result: dict[str, Any] | None,
         current_design: dict[str, Any] | None,
         fallback_required: bool,
     ) -> str:
@@ -235,6 +237,14 @@ def test_chat_design_recommendation_returns_recommended_and_current_design() -> 
                 "product_type": "annuity",
                 "focus_areas": ["연금개시 후 지급방식", "중도인출 유의사항"],
             },
+            "recommended_products": [
+                {
+                    "document_id": "coverage-doc",
+                    "document_name": "annuity.pdf",
+                    "product_type": "annuity",
+                    "recommendation_reason": "연금 니즈에 적합합니다.",
+                }
+            ],
             "current_design": {"coverages": ["기본보장"]},
             "citations": [
                 {
@@ -263,8 +273,9 @@ def test_chat_design_recommendation_returns_recommended_and_current_design() -> 
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["intent"] == "design_recommendation"
+    assert payload["intent"] == "single_product_advice"
     assert payload["recommended_design"]["product_type"] == "annuity"
+    assert payload["recommended_products"][0]["product_type"] == "annuity"
     assert payload["current_design"]["coverages"] == ["기본보장"]
     assert recommendation_tool.calls
     assert firestore_service.saved_interactions[0]["current_design"] == {"coverages": ["기본보장"]}

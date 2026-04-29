@@ -47,6 +47,8 @@ class WorkflowAnswerGenerator(Protocol):
         retrieved_chunks: list[dict[str, Any]],
         citations: list[dict[str, Any]],
         recommended_design: dict[str, Any] | None,
+        recommended_products: list[dict[str, Any]],
+        comparison_result: dict[str, Any] | None,
         current_design: dict[str, Any] | None,
         fallback_required: bool,
     ) -> str:
@@ -96,6 +98,8 @@ class GeminiAnswerGenerator:
             retrieved_chunks=context_blocks,
             citations=citations,
             recommended_design=None,
+            recommended_products=[],
+            comparison_result=None,
             current_design=None,
             fallback_required=fallback_required,
         )
@@ -109,6 +113,8 @@ class GeminiAnswerGenerator:
         retrieved_chunks: list[dict[str, Any]],
         citations: list[dict[str, Any]],
         recommended_design: dict[str, Any] | None,
+        recommended_products: list[dict[str, Any]],
+        comparison_result: dict[str, Any] | None,
         current_design: dict[str, Any] | None,
         fallback_required: bool,
     ) -> str:
@@ -138,13 +144,17 @@ class GeminiAnswerGenerator:
             "상품요약서 기준과 실제 약관 확인 필요성을 자연스럽게 포함하세요.\n"
             "search_profile, product_type, document_type, normalized_section을 반영해 답변 구조를 조정하세요.\n"
             "summary/coverage 질문이면 주요 보장, 상품 기능, 유의사항, 근거 순으로 정리하세요.\n"
-            "design_recommendation이면 추천 포인트와 근거를 구분하고 임의 가입금액을 발명하지 마세요.\n"
+            "single_product_advice이면 설명 포인트, 유의사항, 근거를 구분하세요.\n"
+            "multi_product_recommendation이면 상품별 추천 이유를 비교형으로 정리하세요.\n"
+            "product_comparison이면 상품별 보장, 유의사항, 적합 고객을 비교 요약하세요.\n"
             "design_modification이면 변경된 current_design만 설명하고 없는 조건을 꾸며내지 마세요.\n"
             f"intent: {intent}\n"
             f"search_profile: {search_profile}\n"
             f"fallback_required: {fallback_required}\n"
             f"상품군 가이드: {product_guidance}\n"
             f"추천 설계: {recommended_design}\n"
+            f"추천 상품 목록: {recommended_products}\n"
+            f"비교 결과: {comparison_result}\n"
             f"현재 설계: {current_design}\n"
             f"citations: {citations}\n\n"
             f"질문:\n{question}\n\n"

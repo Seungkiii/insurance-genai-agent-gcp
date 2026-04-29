@@ -12,8 +12,12 @@ def run_tool_router_node(state: AgentState) -> AgentState:
 
     if intent in {"policy_qa", "claim_document", "summary"}:
         updated["tool_plan"] = ["policy_search_tool"]
-    elif intent == "design_recommendation":
+    elif intent in {"single_product_advice", "design_recommendation"}:
         updated["tool_plan"] = ["product_recommend_tool", "policy_search_tool"]
+    elif intent == "multi_product_recommendation":
+        updated["tool_plan"] = ["product_recommend_tool"]
+    elif intent == "product_comparison":
+        updated["tool_plan"] = ["policy_search_tool"]
     elif intent == "design_modification":
         updated["tool_plan"] = ["design_condition_tool"]
     else:

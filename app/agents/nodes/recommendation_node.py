@@ -46,6 +46,7 @@ def run_recommendation_node(state: AgentState, dependencies: WorkflowDependencie
 
     output = result["output"] or {}
     updated["recommended_design"] = output.get("recommended_design")
+    updated["recommended_products"] = list(output.get("recommended_products", []))
     updated["current_design"] = output.get("current_design") or updated.get("current_design")
     if output.get("citations"):
         updated["citations"] = list(output["citations"])
@@ -62,6 +63,7 @@ def _recommendation_output_summary(output: dict[str, Any] | None) -> dict[str, o
         "search_profile": output.get("search_profile"),
         "citation_count": len(output.get("citations", [])),
         "has_recommended_design": bool(output.get("recommended_design")),
+        "recommended_product_count": len(output.get("recommended_products", [])),
         "has_current_design": bool(output.get("current_design")),
         "fallback_required": output.get("fallback_required"),
     }

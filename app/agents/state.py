@@ -6,6 +6,9 @@ from typing import Any, Literal, TypedDict
 
 IntentType = Literal[
     "policy_qa",
+    "single_product_advice",
+    "multi_product_recommendation",
+    "product_comparison",
     "design_recommendation",
     "design_modification",
     "claim_document",
@@ -51,12 +54,14 @@ class AgentState(TypedDict, total=False):
     top_k: int
     top_k_per_document: int
     intent: IntentType
-    extracted_slots: dict[str, str]
+    extracted_slots: dict[str, Any]
     search_profile: str | None
     product_type_hint: str | None
     retrieved_chunks: list[dict[str, Any]]
     citations: list[CitationState]
     recommended_design: dict[str, Any] | None
+    recommended_products: list[dict[str, Any]]
+    comparison_result: dict[str, Any] | None
     current_design: dict[str, Any] | None
     tool_trace: list[ToolTraceState]
     fallback_required: bool
