@@ -10,6 +10,30 @@ from datetime import datetime, timezone
 from app.core.config import Settings
 
 
+STANDARD_LOG_RECORD_FIELDS = {
+    "args",
+    "created",
+    "exc_info",
+    "exc_text",
+    "filename",
+    "funcName",
+    "levelname",
+    "levelno",
+    "lineno",
+    "module",
+    "msecs",
+    "msg",
+    "name",
+    "pathname",
+    "process",
+    "processName",
+    "relativeCreated",
+    "stack_info",
+    "thread",
+    "threadName",
+}
+
+
 class JsonFormatter(logging.Formatter):
     """Minimal JSON formatter suitable for Cloud Run log ingestion."""
 
@@ -32,6 +56,11 @@ class JsonFormatter(logging.Formatter):
             payload["environment"] = environment
         if version:
             payload["version"] = version
+
+        for key, value in record.__dict__.items():
+            if key not in STANDARD_LOG_RECORD_FIELDS and key not in payload:
+                payload[key] = value
+
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
 

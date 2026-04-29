@@ -2,11 +2,46 @@
 
 from __future__ import annotations
 
+import os
+import platform
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.api import admin, chat, documents, feedback, health, sessions
 from app.core.config import Settings, get_settings
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, get_logger
+
+
+logger = get_logger("app.main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Emit startup diagnostics that are easy to spot in Cloud Run logs."""
+    settings: Settings = get_settings()
+    missing_settings = settings.missing_required_settings
+    logger.info(
+        "application_starting",
+        extra={
+            "service": settings.app_name,
+            "environment": settings.environment,
+            "version": settings.app_version,
+            "python_version": platform.python_version(),
+            "port": os.getenv("PORT", "unset"),
+            "missing_settings": missing_settings,
+            "ready": not missing_settings,
+        },
+    )
+    yield
+    logger.info(
+        "application_stopping",
+        extra={
+            "service": settings.app_name,
+            "environment": settings.environment,
+            "version": settings.app_version,
+        },
+    )
 
 
 def create_app() -> FastAPI:
@@ -18,6 +53,7 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version=settings.app_version,
         description="FastAPI backend for a synthetic insurance GenAI PoC.",
+        lifespan=lifespan,
     )
 
     app.include_router(health.router, tags=["health"])
@@ -31,4 +67,8 @@ def create_app() -> FastAPI:
     return app
 
 
-app = create_app()
+try:
+    app = create_app()
+except Exception:
+    logger.exception("application_bootstrap_failed")
+    raise

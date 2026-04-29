@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
@@ -97,3 +99,25 @@ def test_ready_endpoints_return_ready_when_required_settings_exist(monkeypatch) 
             "ready": True,
             "missing_settings": [],
         }
+
+
+def test_app_startup_logs_runtime_diagnostics(monkeypatch, capsys) -> None:
+    """Startup should emit runtime diagnostics useful for Cloud Run failures."""
+    monkeypatch.setenv("APP_NAME", "Insurance GenAI Agent API")
+    monkeypatch.setenv("APP_VERSION", "0.1.0-test")
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("PORT", "8080")
+    get_settings.cache_clear()
+
+    with TestClient(create_app()) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    stdout_lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+    startup_payloads = [json.loads(line) for line in stdout_lines if '"message": "application_starting"' in line]
+    assert startup_payloads
+    startup_payload = startup_payloads[-1]
+    assert startup_payload["port"] == "8080"
+    assert startup_payload["environment"] == "test"
+    assert startup_payload["ready"] is False
+    assert "VERTEX_AI_PROJECT_ID" in startup_payload["missing_settings"]
