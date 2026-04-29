@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.rag.retriever import RetrievalResult
 from app.rag.search_profiles import SearchProfile
@@ -22,7 +22,7 @@ PRODUCT_TYPE_GUIDANCE: dict[str, str] = {
 
 
 class AnswerGenerator(Protocol):
-    """Interface for answer generation implementations."""
+    """Interface for retrieval-grounded answer generation implementations."""
 
     def generate(
         self,
@@ -33,6 +33,26 @@ class AnswerGenerator(Protocol):
         fallback_required: bool,
     ) -> str:
         """Generate a grounded answer from retrieved evidence."""
+
+
+class WorkflowAnswerGenerator(Protocol):
+    """Interface for workflow-level answer generation."""
+
+    def generate_agent_response(
+        self,
+        *,
+        question: str,
+        intent: str,
+        search_profile: str | None,
+        retrieved_chunks: list[dict[str, Any]],
+        citations: list[dict[str, Any]],
+        recommended_design: dict[str, Any] | None,
+        recommended_products: list[dict[str, Any]],
+        comparison_result: dict[str, Any] | None,
+        current_design: dict[str, Any] | None,
+        fallback_required: bool,
+    ) -> str:
+        """Generate a workflow response constrained to retrieved evidence."""
 
 
 @dataclass
@@ -51,31 +71,95 @@ class GeminiAnswerGenerator:
     ) -> str:
         """Generate a grounded answer using retrieved context."""
         context_blocks = [
-            (
-                f"[문서: {result.chunk.document_name} | 문서유형: {result.chunk.document_type} | "
-                f"상품군: {result.chunk.product_type} | 섹션: {result.chunk.section} | "
-                f"정규화섹션: {result.chunk.normalized_section} | 페이지: {result.chunk.page}]\n"
-                f"{result.chunk.content}"
-            )
+            {
+                "document_name": result.chunk.document_name,
+                "document_type": result.chunk.document_type,
+                "product_type": result.chunk.product_type,
+                "section": result.chunk.section,
+                "normalized_section": result.chunk.normalized_section,
+                "page": result.chunk.page,
+                "content": result.chunk.content,
+            }
             for result in results
         ]
-        primary_product_type = results[0].chunk.product_type if results else "unknown"
+        citations = [
+            {
+                "document_name": result.chunk.document_name,
+                "page": result.chunk.page,
+                "section": result.chunk.section,
+                "normalized_section": result.chunk.normalized_section,
+            }
+            for result in results[:5]
+        ]
+        return self.generate_agent_response(
+            question=question,
+            intent="policy_qa",
+            search_profile=search_profile.name,
+            retrieved_chunks=context_blocks,
+            citations=citations,
+            recommended_design=None,
+            recommended_products=[],
+            comparison_result=None,
+            current_design=None,
+            fallback_required=fallback_required,
+        )
+
+    def generate_agent_response(
+        self,
+        *,
+        question: str,
+        intent: str,
+        search_profile: str | None,
+        retrieved_chunks: list[dict[str, Any]],
+        citations: list[dict[str, Any]],
+        recommended_design: dict[str, Any] | None,
+        recommended_products: list[dict[str, Any]],
+        comparison_result: dict[str, Any] | None,
+        current_design: dict[str, Any] | None,
+        fallback_required: bool,
+    ) -> str:
+        """Generate a workflow answer constrained to retrieved evidence."""
+        primary_product_type = "unknown"
+        if retrieved_chunks:
+            primary_product_type = str(retrieved_chunks[0].get("product_type") or "unknown")
+        elif recommended_design and recommended_design.get("product_type"):
+            primary_product_type = str(recommended_design["product_type"])
         product_guidance = PRODUCT_TYPE_GUIDANCE.get(primary_product_type, "질문 의도에 맞는 보장, 조건, 유의사항을 구분해서 설명하세요.")
 
+        chunk_blocks = [
+            (
+                f"[문서: {chunk.get('document_name')} | 문서유형: {chunk.get('document_type')} | "
+                f"상품군: {chunk.get('product_type')} | 섹션: {chunk.get('section')} | "
+                f"정규화섹션: {chunk.get('normalized_section')} | 페이지: {chunk.get('page')}]\n"
+                f"{chunk.get('content') or chunk.get('content_preview') or ''}"
+            )
+            for chunk in retrieved_chunks[:6]
+        ]
+
         prompt = (
-            "당신은 보험상품 설명서 RAG Assistant입니다.\n"
-            "검색된 context 안에서만 답변하고, citation에 없는 내용을 단정하지 마세요.\n"
-            "답변은 기본적으로 요약 -> 근거 -> 유의사항 -> 추가 확인사항 구조를 따르세요.\n"
-            "여러 보장 항목이 있으면 목록형으로 요약하고, 보험금 지급 확정 표현은 금지하세요.\n"
-            "상품요약서 기준임을 적절히 밝히고, 약관 확인 필요 및 심사 결과에 따라 달라질 수 있음을 안내하세요.\n"
-            "문서 표현이 'A를 B로 본다' 또는 '간주한다'에 가까우면, 이를 '지급된다'처럼 단정적으로 바꾸지 마세요.\n"
-            "추가납입, 중도인출, 복수연금선택제도, 행복설계자금, 조기연금전환옵션은 주요 보장이 아니라 상품 기능으로 구분하세요.\n"
-            "coverage_summary 질문이면 답변 구조를 1. 주요 보장 2. 상품 기능 3. 가입·유의사항 4. 근거 순서로 정리하세요.\n"
-            f"검색 프로필: {search_profile.name}\n"
+            "당신은 Insurance Workflow Agent입니다.\n"
+            "검색된 context와 상태 정보 밖의 내용을 단정하지 마세요.\n"
+            "answer는 반드시 근거 중심으로 작성하고, citation이 없는 내용을 사실처럼 쓰지 마세요.\n"
+            "보험금 지급 확정, 보상 승인 확정, 인수 확정 표현은 금지합니다.\n"
+            "상품요약서 기준과 실제 약관 확인 필요성을 자연스럽게 포함하세요.\n"
+            "search_profile, product_type, document_type, normalized_section을 반영해 답변 구조를 조정하세요.\n"
+            "summary/coverage 질문이면 주요 보장, 상품 기능, 유의사항, 근거 순으로 정리하세요.\n"
+            "coverage_summary에서는 exclusions를 주요 보장 근거로 쓰지 말고 유의사항 근거로만 사용하세요.\n"
+            "single_product_advice이면 설명 포인트, 유의사항, 근거를 구분하세요.\n"
+            "multi_product_recommendation이면 상품별 추천 이유를 비교형으로 정리하세요.\n"
+            "product_comparison이면 상품별 보장, 유의사항, 적합 고객을 비교 요약하세요.\n"
+            "design_modification이면 변경된 current_design만 설명하고 없는 조건을 꾸며내지 마세요.\n"
+            f"intent: {intent}\n"
+            f"search_profile: {search_profile}\n"
             f"fallback_required: {fallback_required}\n"
-            f"상품군 가이드: {product_guidance}\n\n"
+            f"상품군 가이드: {product_guidance}\n"
+            f"추천 설계: {recommended_design}\n"
+            f"추천 상품 목록: {recommended_products}\n"
+            f"비교 결과: {comparison_result}\n"
+            f"현재 설계: {current_design}\n"
+            f"citations: {citations}\n\n"
             f"질문:\n{question}\n\n"
-            f"근거:\n{'\n\n'.join(context_blocks)}\n\n"
+            f"검색 근거:\n{'\n\n'.join(chunk_blocks)}\n\n"
             "답변:"
         )
         answer = self.generation_service.generate_text(prompt)
