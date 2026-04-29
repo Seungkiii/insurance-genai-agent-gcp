@@ -49,5 +49,7 @@ class DocumentIndexResponse(BaseModel):
     gcs_uri: str
     status: str
     chunks: int
+    chunk_count: int | None = None
     product_type: str | None = None
     document_type: str | None = None
+    normalized_section_counts: dict[str, int] | None = None

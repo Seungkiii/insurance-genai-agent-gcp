@@ -1,30 +1,12 @@
-# MCP Tool Server MVP
+# MCP-Compatible Tools
 
 ## 개요
 
-이 프로젝트에는 포트폴리오 설명과 로컬 workflow 연동을 위한 `MCP-compatible Tool Server MVP`가 포함되어 있습니다. 현재 구현은 실제 MCP SDK를 바로 붙인 형태는 아니고, MCP의 핵심 개념을 설명할 수 있는 가벼운 registry 패턴으로 구성되어 있습니다.
+현재 Tool Server는 실제 MCP SDK 자체를 직접 사용하지는 않지만, MCP로 전환하기 쉬운 인터페이스를 유지하도록 설계되어 있습니다. 핵심은 tool 실행 계약을 표준화하고, business logic을 transport/runtime과 분리하는 것입니다.
 
-이 구조로 보여주고 싶은 포인트는 다음과 같습니다.
+## 공통 계약
 
-- tool 단위 책임 분리
-- 검색 가능한 tool metadata 제공
-- 구조화된 input / output schema 정의
-- 명시적인 `run` 실행 계약
-- 이후 실제 MCP SDK로의 전환 가능성
-
-구현 진입점:
-
-- `app/mcp_server/server.py`
-
-tool 파일:
-
-- `app/mcp_server/tools/policy_search_tool.py`
-- `app/mcp_server/tools/product_recommend_tool.py`
-- `app/mcp_server/tools/design_condition_tool.py`
-
-## MCP-Compatible Interface
-
-각 tool은 아래 공통 필드와 메서드를 가집니다.
+모든 tool은 `BaseTool`을 상속하고 아래 메타데이터를 가집니다.
 
 - `name`
 - `description`
@@ -32,122 +14,57 @@ tool 파일:
 - `output_schema`
 - `run(payload)`
 
-이 형태는 실제 MCP tool 선언 방식과 최대한 유사하게 맞추면서도, 포트폴리오 MVP 수준에서는 복잡도를 낮추기 위한 선택입니다.
+`run()`은 내부 `execute()`를 호출하고, 항상 `ToolResult` 표준 포맷으로 감싼 결과를 반환합니다.
 
-## Tool Registry
+### ToolResult 포맷
 
-`MCPToolServer`는 로컬 registry이자 실행 레이어 역할을 합니다.
+- `tool_name`
+- `status`
+- `input`
+- `output`
+- `latency_ms`
+- `error`
+- `trace_summary`
 
-지원 메서드:
+이 포맷 덕분에 Agent는 tool마다 다른 성공/실패 포맷을 해석하지 않고 동일한 방식으로 로그와 fallback을 처리할 수 있습니다.
 
-- `list_tools()`: tool metadata 목록 반환
-- `call_tool(name, payload)`: 이름으로 tool 실행
+## Tool별 역할
 
-이 구조 덕분에 아래 경계를 설명하기 쉬워집니다.
+### `policy_search_tool`
 
-- Agent orchestration
-- business / domain tools
-- transport / runtime layer
+- 질문을 `search_profile`로 분류합니다.
+- `expanded_query`를 생성합니다.
+- `product_type`, `document_type`, `normalized_section` metadata를 가진 hybrid retriever를 호출합니다.
+- output에는 `chunks`, `citations`, `search_profile`, `product_type`, `document_type`, `normalized_section`, `confidence_signal`, `fallback_required`가 포함됩니다.
 
-## Tool 구성
+### `product_recommend_tool`
 
-### 1. `policy_search_tool`
+- 내부적으로 `policy_search_tool`을 호출합니다.
+- 검색된 근거를 기반으로 상품군별 요약 구조를 만듭니다.
+- 임의 가입금액, 확정 추천, 심사 결과를 생성하지 않습니다.
+- output에는 `recommended_design`, `evidence_summary`, `citations`, `caution_notes`가 포함됩니다.
 
-역할:
+### `design_condition_tool`
 
-- synthetic sample 약관 검색
-- 관련 조항과 citation metadata 반환
+- Firestore에서 `session_id` 기준 `current_design`을 조회합니다.
+- `add_coverages`, `remove_coverages`, `keep_coverages`를 반영합니다.
+- `previous_design`과 `updated_design`을 함께 반환합니다.
+- Firestore 저장 실패 시에도 예외를 그대로 퍼뜨리지 않고 `ToolResult.status=error`로 반환할 수 있게 설계되어 있습니다.
 
-구현 방식:
+## 실제 MCP SDK 전환 포인트
 
-- 기존 keyword 기반 RAG retriever 호출
-- `sample_policy.md` 문서 파이프라인 재사용
+현재 구조는 다음 이유로 MCP SDK 전환이 쉽습니다.
 
-입력 예시:
+1. tool 메타데이터와 실행 함수가 이미 분리되어 있습니다.
+2. input/output schema가 명시적으로 존재합니다.
+3. 결과 포맷이 `ToolResult`로 표준화되어 있습니다.
+4. business logic은 `execute()` 내부에 있어 런타임만 교체하면 됩니다.
 
-```json
-{
-  "query": "입원일당 청구 서류는 무엇인가요?",
-  "top_k": 3
-}
-```
+전환 순서는 보통 다음과 같습니다.
 
-### 2. `product_recommend_tool`
+1. `MCPToolServer` registry를 실제 MCP SDK server registration으로 교체
+2. 각 tool의 `name`, `description`, `input_schema`, `output_schema`를 SDK tool declaration에 매핑
+3. `run()` 또는 `execute()`를 SDK handler로 연결
+4. transport를 stdio, websocket, hosted runtime 중 원하는 방식으로 선택
 
-역할:
-
-- synthetic 가입설계 이력 기반 추천 수행
-
-구현 방식:
-
-- `recommendation_service` 호출
-- `age_group`, `gender`, `product_name` 기준 필터링
-- rider 추천, payment 설정, coverage amount, `confidence_score`, `basis_count` 반환
-
-입력 예시:
-
-```json
-{
-  "age_group": "30s",
-  "gender": "F",
-  "product_name": "Sample Care Plan"
-}
-```
-
-### 3. `design_condition_tool`
-
-역할:
-
-- 현재 synthetic 설계 상태에 rider add / remove 적용
-
-구현 방식:
-
-- `current_design` object 입력
-- `add_riders`, `remove_riders` 반영
-- 수정된 설계와 적용 결과 반환
-
-입력 예시:
-
-```json
-{
-  "current_design": {
-    "product_name": "Sample Care Plan",
-    "payment_period": "20 years",
-    "insurance_period": "80 years",
-    "payment_cycle": "monthly",
-    "coverage_amount": 50000000,
-    "riders": ["Standard Hospital Rider"]
-  },
-  "add_riders": ["Critical Diagnosis Rider"],
-  "remove_riders": ["Standard Hospital Rider"]
-}
-```
-
-## 왜 이 구조가 포트폴리오에 좋은가
-
-이 구조의 장점은 policy retrieval, recommendation, design modification을 Agent 내부 한 함수에 숨기지 않고, 각각을 명확한 tool로 분리했다는 점입니다.
-
-즉 각 기능은 다음 특징을 가집니다.
-
-- 도메인 목적이 분명함
-- interface contract가 명확함
-- 재사용 가능함
-- 이후 다른 구현으로 교체하기 쉬움
-
-그래서 “GenAI 시스템이 monolithic prompt logic에서 modular tool orchestration으로 어떻게 진화하는가”를 설명하기에 적합합니다.
-
-## 향후 MCP SDK 전환 계획
-
-현재 버전은 의도적으로 SDK 의존성을 최소화했습니다. 이후 실제 MCP SDK로 전환할 때는 아래 순서로 진행할 수 있습니다.
-
-1. 로컬 `MCPToolServer` registry를 MCP SDK server runtime으로 교체
-2. 각 tool을 SDK 방식으로 등록
-3. `input_schema`, `output_schema`를 SDK native schema로 매핑
-4. 기존 `run` 로직은 그대로 실행 본문으로 재사용
-5. 원하는 MCP transport layer로 노출
-
-핵심은 현재도 비즈니스 로직이 이미 tool 단위로 분리되어 있기 때문에, 전환 작업이 로직 재작성보다는 runtime/registration 레벨에 집중된다는 점입니다.
-
-## 데이터 안전성
-
-현재 모든 tool은 synthetic sample 데이터만 사용합니다. 실제 보험사 데이터, 실제 고객정보, 실제 운영 API 계약은 포함하지 않습니다.
+즉 현재 구조는 “보험상품 문서 RAG + 추천 + 설계변경” 비즈니스 로직을 그대로 유지한 채 MCP runtime만 바꾸는 방향을 전제로 하고 있습니다.

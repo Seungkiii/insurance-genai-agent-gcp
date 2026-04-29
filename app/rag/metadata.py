@@ -28,10 +28,10 @@ DOCUMENT_TYPE_KEYWORDS: dict[DocumentType, tuple[str, ...]] = {
 
 SECTION_PATTERNS: tuple[tuple[tuple[str, ...], NormalizedSection], ...] = (
     (("상품 특이사항", "상품 개요", "주요 특징", "상품특징"), "product_overview"),
-    (("가입나이", "가입연령", "보험기간", "납입기간", "가입조건"), "eligibility"),
+    (("보험가입 자격요건", "가입나이", "가입연령", "보험기간", "납입기간", "가입조건"), "eligibility"),
     (("보험금 지급사유", "보험급부", "지급금액", "보장내용", "보장", "급부"), "coverage"),
-    (("지급제한", "지급하지 않는 사유", "보장하지 않는 사유", "면책", "계약 전 알릴 의무"), "exclusions"),
-    (("연금지급형태", "생존연금", "행복설계자금", "연금개시 후 보험기간", "연금개시후", "연금개시전"), "annuity_payment"),
+    (("보험금 지급제한", "지급제한사항", "지급제한", "지급하지 않는 사유", "보장하지 않는 사유", "면책", "계약 전 알릴 의무"), "exclusions"),
+    (("연금지급형태", "생존연금", "행복설계자금", "연금개시 후 보험기간", "연금개시후 보험기간", "연금개시후", "연금개시전", "복수연금선택제도", "조기연금전환옵션", "추가납입", "중도인출"), "annuity_payment"),
     (("사망보험금", "종신보장", "체증형 사망보험금"), "death_benefit"),
     (("암진단비", "고액암", "일반암", "소액암", "암수술비", "암입원"), "cancer_benefit"),
     (("2대 질환", "3대 질환", "치매", "입원", "수술", "진단비", "건강보험"), "health_benefit"),
@@ -72,10 +72,40 @@ def normalize_section(section_title: str, content: str) -> NormalizedSection:
     title = _normalize_space(section_title)
     body = _normalize_space(content)
     compact = re.sub(r"\s+", "", f"{title} {body}")
+    title_compact = re.sub(r"\s+", "", title)
+    body_compact = re.sub(r"\s+", "", body)
+    coverage_content_terms = (
+        "지급사유",
+        "지급금액",
+        "급부명",
+        "장해지급률",
+        "보험금1,000만원",
+        "보험금1000만원",
+        "고도재해장해보험금",
+    )
+    exclusion_content_terms = (
+        "계약전알릴의무",
+        "지급제한",
+        "보장하지않는",
+        "면책",
+        "고의",
+        "해지할수있으며",
+        "보험금을받지못하는경우",
+    )
 
-    if "보험금지급사유" in compact or "보험급부" in compact or "지급금액" in compact:
+    if any(term in compact for term in ("상품의특이사항", "상품개요", "주요특징")):
+        return "product_overview"
+    if any(term in compact for term in ("보험가입자격요건", "가입나이", "가입연령", "보험기간", "납입기간", "가입조건")):
+        return "eligibility"
+    if any(term in compact for term in ("연금지급형태", "생존연금", "행복설계자금", "연금개시후보험기간", "연금개시후", "연금개시전", "복수연금선택제도", "조기연금전환옵션", "추가납입", "중도인출")):
+        return "annuity_payment"
+    if any(term in body_compact for term in coverage_content_terms):
         return "coverage"
-    if any(term in compact for term in ("지급하지않는사유", "보장하지않는사유", "면책", "계약전알릴의무", "지급제한")):
+    if any(term in body_compact for term in exclusion_content_terms):
+        return "exclusions"
+    if any(term in title_compact for term in ("보험금지급사유", "보험급부", "지급금액")):
+        return "coverage"
+    if any(term in compact for term in ("보험금지급제한", "지급제한사항", "지급하지않는사유", "보장하지않는사유", "면책", "계약전알릴의무", "지급제한")):
         return "exclusions"
     if any(term in compact for term in ("미래의수익을보장하는것은아닙니다", "미래수익을보장하지않", "환급률")):
         return "refund"
@@ -85,8 +115,6 @@ def normalize_section(section_title: str, content: str) -> NormalizedSection:
         return "refund"
     if any(term in compact for term in ("보험료", "적용이율", "위험률", "적립이율")):
         return "premium"
-    if any(term in compact for term in ("연금지급형태", "생존연금", "행복설계자금", "연금개시후", "연금개시전")):
-        return "annuity_payment"
     if any(term in compact for term in ("사망보험금", "종신보장", "체증형사망보험금")):
         return "death_benefit"
     if any(term in compact for term in ("암진단비", "고액암", "일반암", "소액암", "암수술비", "암입원")):
@@ -103,11 +131,30 @@ def normalize_section(section_title: str, content: str) -> NormalizedSection:
         return "rider"
     if any(term in compact for term in ("보험금지급사유", "보험급부", "지급금액", "보장내용", "보장하는손해")):
         return "coverage"
-    if any(term in compact for term in ("상품특이사항", "상품개요", "주요특징")):
-        return "product_overview"
-    if any(term in compact for term in ("가입나이", "가입연령", "보험기간", "납입기간", "가입조건")):
-        return "eligibility"
     return _fallback_section_from_terms(compact)
+
+
+def section_label_from_normalized(normalized_section: str) -> str:
+    """Return a human-readable fallback title for a normalized section."""
+    labels = {
+        "product_overview": "상품 특이사항",
+        "eligibility": "보험가입 자격요건",
+        "coverage": "보험금 지급사유",
+        "exclusions": "지급제한사항",
+        "annuity_payment": "연금지급형태",
+        "death_benefit": "사망보험금",
+        "cancer_benefit": "암 보장",
+        "health_benefit": "건강 보장",
+        "accident_benefit": "상해 보장",
+        "dental_benefit": "치아 보장",
+        "premium": "보험료",
+        "refund": "해약환급금",
+        "fee": "공제금액",
+        "claim": "청구 서류",
+        "rider": "특약",
+        "miscellaneous": "기타",
+    }
+    return labels.get(normalized_section, "기타")
 
 
 def summarize_text_features(text: str) -> dict[str, int]:
