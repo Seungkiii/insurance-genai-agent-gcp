@@ -12,6 +12,8 @@ def run_response_node(state: AgentState, generator: WorkflowAnswerGenerator) -> 
     intent = updated.get("intent", "general")
     updated.setdefault("citations", [])
     updated.setdefault("recommended_design", None)
+    updated.setdefault("recommended_products", [])
+    updated.setdefault("comparison_result", None)
     updated.setdefault("current_design", None)
     updated.setdefault("tool_trace", [])
     updated.setdefault("confidence_score", 0.0)
@@ -35,6 +37,8 @@ def run_response_node(state: AgentState, generator: WorkflowAnswerGenerator) -> 
         retrieved_chunks=updated.get("retrieved_chunks", []),
         citations=updated.get("citations", []),
         recommended_design=updated.get("recommended_design"),
+        recommended_products=updated.get("recommended_products", []),
+        comparison_result=updated.get("comparison_result"),
         current_design=updated.get("current_design"),
         fallback_required=bool(updated.get("fallback_required", False)),
     )

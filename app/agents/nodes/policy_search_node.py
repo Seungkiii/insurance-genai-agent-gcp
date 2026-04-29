@@ -55,6 +55,8 @@ def run_policy_search_node(state: AgentState, dependencies: WorkflowDependencies
         updated["product_type_hint"] = None
     updated["fallback_required"] = bool(output.get("fallback_required", False))
     updated["confidence_score"] = float(output.get("confidence_score", updated.get("confidence_score", 0.0)))
+    if updated.get("intent") == "product_comparison":
+        updated["comparison_result"] = _build_comparison_result(updated["retrieved_chunks"])
     return updated
 
 
@@ -71,3 +73,27 @@ def _policy_output_summary(output: dict[str, Any] | None) -> dict[str, object] |
         "fallback_required": output.get("fallback_required"),
         "confidence_score": output.get("confidence_score"),
     }
+
+
+def _build_comparison_result(chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for chunk in chunks:
+        document_name = str(chunk.get("document_name") or "unknown")
+        grouped.setdefault(
+            document_name,
+            {
+                "document_name": document_name,
+                "product_type": chunk.get("product_type"),
+                "highlights": [],
+                "caution_points": [],
+            },
+        )
+        target = grouped[document_name]
+        section = str(chunk.get("section") or "")
+        normalized_section = str(chunk.get("normalized_section") or "")
+        line = f"{section} ({normalized_section})"
+        if normalized_section in {"coverage", "product_overview", "annuity_payment"}:
+            target["highlights"].append(line)
+        else:
+            target["caution_points"].append(line)
+    return {"products": list(grouped.values())}

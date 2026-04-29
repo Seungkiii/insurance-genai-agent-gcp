@@ -58,6 +58,8 @@ class ChatResponse(BaseModel):
     intent: str
     answer: str
     recommended_design: dict[str, object] | None = None
+    recommended_products: list[dict[str, object]] = Field(default_factory=list)
+    comparison_result: dict[str, object] | None = None
     current_design: dict[str, object] | None = None
     citations: list[Citation]
     search_profile: str | None = None

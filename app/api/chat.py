@@ -133,6 +133,8 @@ def chat(
         intent=str(result.get("intent", "general")),
         answer=str(result.get("answer", "")),
         recommended_design=result.get("recommended_design"),
+        recommended_products=list(result.get("recommended_products", [])),
+        comparison_result=result.get("comparison_result"),
         current_design=result.get("current_design"),
         citations=list(result.get("citations", [])),
         search_profile=result.get("search_profile"),

@@ -34,52 +34,65 @@ def run_slot_extract_node(state: AgentState) -> AgentState:
     updated.setdefault("tool_trace", [])
     updated.setdefault("citations", [])
     updated.setdefault("retrieved_chunks", [])
+    updated.setdefault("recommended_products", [])
+    updated.setdefault("comparison_result", None)
     updated.setdefault("fallback_required", False)
     updated["next_action"] = "route_tools"
     return updated
 
 
-def extract_slots(query: str) -> dict[str, str]:
-    """Extract customer profile and design-modification hints from the query."""
-    slots: dict[str, str] = {}
+def extract_slots(query: str) -> dict[str, object]:
+    """Extract generalized customer profile and design-modification hints."""
+    slots: dict[str, object] = {
+        "risk_needs": [],
+        "add_coverages": [],
+        "remove_coverages": [],
+        "keep_coverages": [],
+    }
     normalized = query.lower()
 
-    age_match = re.search(r"([2-7]0)s", normalized)
+    age_match = re.search(r"(\d{2})\s*세", query)
     if age_match:
-        slots["age_group"] = age_match.group(1)
+        age = int(age_match.group(1))
+        slots["age"] = age
+        slots["age_group"] = f"{age // 10 * 10}대"
+    else:
+        age_group_match = re.search(r"([2-7]0)대", query)
+        if age_group_match:
+            slots["age_group"] = f"{age_group_match.group(1)}대"
+        english_age_group_match = re.search(r"([2-7]0)s", normalized)
+        if english_age_group_match:
+            slots["age_group"] = f"{english_age_group_match.group(1)}대"
 
     if "여성" in query:
-        slots["gender"] = "F"
+        slots["gender"] = "female"
     elif "남성" in query:
-        slots["gender"] = "M"
+        slots["gender"] = "male"
 
-    payment_period_match = re.search(r"(\d+)\s*년\s*납", query)
-    if payment_period_match:
-        slots["payment_period"] = f"{payment_period_match.group(1)} years"
+    if any(token in query for token in ("설명", "안내", "강조", "제안")):
+        slots["customer_goal"] = "advice"
+    elif any(token in query for token in ("추천", "적합", "골라")):
+        slots["customer_goal"] = "recommendation"
+    elif "비교" in query or "차이" in query:
+        slots["customer_goal"] = "comparison"
 
-    insurance_period_match = re.search(r"(\d+)\s*세\s*(만기|보장)", query)
-    if insurance_period_match:
-        slots["insurance_period"] = f"{insurance_period_match.group(1)} years"
+    if "이 상품" in query:
+        slots["product_preference"] = "current_document"
 
-    coverage_match = re.search(r"(\d+)\s*(만원|원)", query)
-    if coverage_match:
-        amount = int(coverage_match.group(1))
-        if coverage_match.group(2) == "만원":
-            amount *= 10000
-        slots["coverage_amount"] = str(amount)
+    risk_needs = _extract_risk_needs(query)
+    if risk_needs:
+        slots["risk_needs"] = risk_needs
 
-    if "월납" in query:
-        slots["payment_cycle"] = "monthly"
+    if any(token in query for token in ("보험료 부담", "가성비", "저렴", "비용", "예산")):
+        slots["budget_preference"] = "cost_sensitive"
 
-    if any(token in query for token in ("낮추", "줄이", "감액")):
-        slots["modify_direction"] = "decrease"
-    elif any(token in query for token in ("늘리", "확대", "증액")):
-        slots["modify_direction"] = "increase"
-
-    if any(token in query for token in ("추가", "넣어", "포함")):
-        slots["design_add"] = "true"
-    if any(token in query for token in ("제외", "빼", "삭제")):
-        slots["design_remove"] = "true"
+    for token in ("암", "치아", "치료비", "사망보장", "노후", "연금", "상해", "재해", "건강", "질병", "입원"):
+        if token in query and any(keyword in query for keyword in ("추가", "넣", "포함")):
+            slots["add_coverages"].append(token)
+        if token in query and any(keyword in query for keyword in ("제외", "빼", "삭제")):
+            slots["remove_coverages"].append(token)
+        if token in query and "유지" in query:
+            slots["keep_coverages"].append(token)
 
     return slots
 
@@ -91,3 +104,8 @@ def _detect_product_type_hint(query: str, profile: SearchProfile) -> str | None:
     if profile.product_type_hints:
         return profile.product_type_hints[0]
     return None
+
+
+def _extract_risk_needs(query: str) -> list[str]:
+    risk_tokens = ("암", "치아", "치료비", "사망보장", "노후", "연금", "상해", "재해", "건강", "질병")
+    return [token for token in risk_tokens if token in query]

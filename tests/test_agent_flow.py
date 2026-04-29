@@ -41,6 +41,8 @@ class FakeGenerator:
         retrieved_chunks: list[dict[str, Any]],
         citations: list[dict[str, Any]],
         recommended_design: dict[str, Any] | None,
+        recommended_products: list[dict[str, Any]],
+        comparison_result: dict[str, Any] | None,
         current_design: dict[str, Any] | None,
         fallback_required: bool,
     ) -> str:
@@ -52,6 +54,8 @@ class FakeGenerator:
                 "retrieved_chunks": retrieved_chunks,
                 "citations": citations,
                 "recommended_design": recommended_design,
+                "recommended_products": recommended_products,
+                "comparison_result": comparison_result,
                 "current_design": current_design,
                 "fallback_required": fallback_required,
             }
@@ -156,6 +160,14 @@ def create_dependencies(*, firestore_service: FakeFirestoreService | None = None
                 "product_type": "annuity",
                 "focus_areas": ["연금개시 후 지급방식", "중도인출 유의사항"],
             },
+            "recommended_products": [
+                {
+                    "document_id": "doc-1",
+                    "document_name": "annuity.pdf",
+                    "product_type": "annuity",
+                    "recommendation_reason": "노후/연금 니즈와 잘 맞습니다.",
+                }
+            ],
             "current_design": {"coverages": ["기본보장"]},
             "citations": [
                 {
@@ -220,21 +232,79 @@ def test_design_recommendation_flow_runs_recommendation_then_policy_search() -> 
     result = run_workflow(
         {
             "session_id": "session-recommend",
-            "user_query": "50s 고객에게 연금보험 추천 설계안을 근거와 함께 알려줘.",
+            "user_query": "55세 남성에게 적합한 보험 상품 추천해줘.",
+        },
+        dependencies,
+    )
+
+    assert result["intent"] == "multi_product_recommendation"
+    assert result["recommended_design"] is not None
+    assert result["recommended_products"]
+    assert result["current_design"] == {"coverages": ["기본보장"]}
+    assert recommendation_tool.calls
+    assert not policy_tool.calls
+    assert [item["tool_name"] for item in result["tool_trace"]] == ["product_recommend_tool"]
+
+
+def test_single_product_advice_calls_product_recommend_tool() -> None:
+    dependencies, policy_tool, recommendation_tool, _, _ = create_dependencies()
+
+    result = run_workflow(
+        {
+            "session_id": "session-single-advice",
+            "user_query": "55세 남성 고객에게 이 상품을 설명한다면 어떤 보장과 유의사항 중심으로 안내하면 좋을까?",
             "document_ids": ["doc-1"],
         },
         dependencies,
     )
 
-    assert result["intent"] == "design_recommendation"
-    assert result["recommended_design"] is not None
-    assert result["current_design"] == {"coverages": ["기본보장"]}
+    assert result["intent"] == "single_product_advice"
     assert recommendation_tool.calls
     assert policy_tool.calls
-    assert [item["tool_name"] for item in result["tool_trace"]] == [
-        "product_recommend_tool",
-        "policy_search_tool",
-    ]
+    assert [item["tool_name"] for item in result["tool_trace"]] == ["product_recommend_tool", "policy_search_tool"]
+
+
+def test_product_comparison_uses_policy_search_for_multiple_documents() -> None:
+    dependencies, policy_tool, _, _, _ = create_dependencies()
+    policy_tool.result = {
+        **policy_tool.result,
+        "chunks": [
+            {
+                "document_id": "doc-1",
+                "document_name": "annuity-a.pdf",
+                "document_type": "product_summary",
+                "product_type": "annuity",
+                "page": 3,
+                "section": "상품 특이사항",
+                "normalized_section": "product_overview",
+                "content": "A 상품 설명",
+            },
+            {
+                "document_id": "doc-2",
+                "document_name": "annuity-b.pdf",
+                "document_type": "product_summary",
+                "product_type": "health",
+                "page": 4,
+                "section": "보험금 지급사유",
+                "normalized_section": "coverage",
+                "content": "B 상품 설명",
+            },
+        ],
+    }
+
+    result = run_workflow(
+        {
+            "session_id": "session-compare",
+            "user_query": "이 두 상품 중 50대 남성에게 더 적합한 상품은 뭐야? 비교해줘.",
+            "document_ids": ["doc-1", "doc-2"],
+        },
+        dependencies,
+    )
+
+    assert result["intent"] == "product_comparison"
+    assert policy_tool.calls
+    assert policy_tool.calls[0]["document_ids"] == ["doc-1", "doc-2"]
+    assert result["comparison_result"] is not None
 
 
 def test_design_modification_flow_updates_current_design_from_tool() -> None:
