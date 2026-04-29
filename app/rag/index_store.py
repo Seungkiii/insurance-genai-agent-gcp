@@ -35,6 +35,7 @@ class IndexStore:
                 "document_type": chunk.document_type,
                 "product_type": chunk.product_type,
                 "page": chunk.page,
+                "end_page": chunk.end_page,
                 "section": chunk.section,
                 "normalized_section": chunk.normalized_section,
                 "content": chunk.content,

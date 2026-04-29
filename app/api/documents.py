@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
+from collections import Counter
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
@@ -156,6 +157,7 @@ def index_document(
 
         chunks = chunk_document(parsed_document)
         embeddings = embedder.embed_texts([chunk.content for chunk in chunks])
+        normalized_section_counts = dict(Counter(chunk.normalized_section for chunk in chunks))
 
         index_store = IndexStore(storage_service)
         index_store.save_chunks(document_id, chunks)
@@ -176,8 +178,10 @@ def index_document(
             gcs_uri=response_record["gcs_uri"],
             status=response_record["status"],
             chunks=response_record.get("chunk_count", len(chunks)),
+            chunk_count=response_record.get("chunk_count", len(chunks)),
             product_type=response_record.get("product_type", parsed_document.product_type),
             document_type=response_record.get("document_type", parsed_document.document_type),
+            normalized_section_counts=normalized_section_counts,
         )
     except Exception as exc:  # noqa: BLE001
         firestore_service.update_document_status(

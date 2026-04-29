@@ -20,6 +20,7 @@ class Citation(BaseModel):
 
     document_name: str
     page: int
+    end_page: int | None = None
     section: str
     normalized_section: str | None = None
     document_type: str | None = None
@@ -28,6 +29,18 @@ class Citation(BaseModel):
     score: float
     embedding_score: float | None = None
     hybrid_score: float | None = None
+
+
+class ToolTraceItem(BaseModel):
+    """Structured trace entry for a tool-like retrieval step."""
+
+    step: int
+    tool_name: str
+    status: str
+    latency_ms: int
+    input_summary: dict[str, object]
+    output_summary: dict[str, object] | None = None
+    error: str | None = None
 
 
 class RecommendedDesign(BaseModel):
@@ -50,7 +63,7 @@ class ChatResponse(BaseModel):
     confidence_score: float
     fallback_required: bool | None = None
     follow_up_questions: list[str] = Field(default_factory=list)
-    tool_trace: list[str] = Field(default_factory=list)
+    tool_trace: list[ToolTraceItem] = Field(default_factory=list)
     disclaimer: str
 
 

@@ -1,29 +1,41 @@
-"""Policy search tool backed by the keyword RAG retriever."""
+"""Policy search tool backed by the hybrid insurance RAG retriever."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.agents.nodes.retrieval_node import get_policy_chunks
 from app.rag.citation import build_citations
-from app.rag.retriever import KeywordChunkRetriever
+from app.rag.confidence import compute_confidence_score
+from app.rag.embedder import Embedder
+from app.rag.retriever import GcsEmbeddingRetriever, RetrievalResult
+from app.rag.search_profiles import SearchProfile, build_expanded_query, classify_search_profile
+from app.services.firestore_service import FirestoreService
+from app.services.gcp_storage_service import StorageService
+
+from .base import BaseTool
 
 
 @dataclass
-class PolicySearchTool:
-    """Search synthetic policy clauses using the existing RAG retriever."""
+class PolicySearchTool(BaseTool):
+    """Search indexed insurance documents using the hybrid retriever."""
 
+    storage_service: StorageService | None = None
+    embedder: Embedder | None = None
+    firestore_service: FirestoreService | None = None
+    bucket_name: str = ""
     name: str = "policy_search_tool"
     description: str = (
-        "Search the synthetic sample policy and return the most relevant clauses with citation metadata."
+        "Search indexed insurance product PDFs using search profiles, metadata-aware query expansion, and hybrid retrieval."
     )
     input_schema: dict[str, Any] = field(
         default_factory=lambda: {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Policy or claim-related question."},
-                "top_k": {"type": "integer", "default": 3, "minimum": 1, "maximum": 10},
+                "query": {"type": "string"},
+                "document_ids": {"type": "array", "items": {"type": "string"}},
+                "top_k": {"type": "integer", "default": 5, "minimum": 1, "maximum": 20},
+                "product_type": {"type": "string"},
             },
             "required": ["query"],
         }
@@ -32,43 +44,156 @@ class PolicySearchTool:
         default_factory=lambda: {
             "type": "object",
             "properties": {
-                "ok": {"type": "boolean"},
-                "tool_name": {"type": "string"},
-                "query": {"type": "string"},
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "document_name": {"type": "string"},
-                            "section": {"type": "string"},
-                            "page": {"type": "integer"},
-                            "content": {"type": "string"},
-                        },
-                    },
-                },
+                "chunks": {"type": "array"},
+                "citations": {"type": "array"},
+                "search_profile": {"type": "string"},
+                "product_type": {"type": "string"},
+                "document_type": {"type": "string"},
+                "normalized_section": {"type": "array", "items": {"type": "string"}},
+                "confidence_signal": {"type": "string"},
+                "fallback_required": {"type": "boolean"},
             },
         }
     )
 
-    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Execute keyword retrieval against the synthetic sample policy."""
+    def execute(self, payload: dict[str, Any], trace_summary: list[str]) -> dict[str, Any]:
+        """Execute metadata-aware policy retrieval."""
         query = str(payload.get("query", "")).strip()
-        top_k = int(payload.get("top_k", 3))
         if not query:
-            return {
-                "ok": False,
-                "tool_name": self.name,
-                "error": "The 'query' field is required.",
-            }
+            raise ValueError("The 'query' field is required.")
+        if self.storage_service is None or self.embedder is None or self.firestore_service is None or not self.bucket_name:
+            raise RuntimeError("PolicySearchTool is not configured with storage, embedder, firestore, and bucket_name.")
 
-        retriever = KeywordChunkRetriever()
-        results = retriever.retrieve(query, get_policy_chunks(), top_k=top_k)
+        top_k = int(payload.get("top_k", 5))
+        requested_document_ids = [str(item) for item in payload.get("document_ids", []) if str(item).strip()]
+        requested_product_type = _optional_string(payload.get("product_type"))
+
+        candidate_documents = self._resolve_documents(requested_document_ids, requested_product_type)
+        if not candidate_documents:
+            raise ValueError("No indexed documents matched the requested scope.")
+
+        product_types = [str(record.get("product_type", "unknown")) for record in candidate_documents]
+        search_profile = classify_search_profile(query)
+        expanded_query = build_expanded_query(query, search_profile, product_types=product_types)
+        trace_summary.extend(
+            [
+                f"profile={search_profile.name}",
+                f"expanded_query={expanded_query}",
+                f"document_count={len(candidate_documents)}",
+            ]
+        )
+
+        retriever = GcsEmbeddingRetriever(self.storage_service, self.bucket_name)
+        query_embedding = self.embedder.embed_texts([expanded_query])[0]
+        results = retriever.retrieve(
+            query_embedding,
+            [str(record["document_id"]) for record in candidate_documents],
+            top_k=top_k,
+            question=query,
+            search_profile=search_profile,
+            top_k_per_document=2 if search_profile.name == "product_comparison" else 3,
+        )
+
+        fallback_required = _requires_fallback(results, search_profile)
+        confidence_score = compute_confidence_score(
+            results=results,
+            profile=search_profile,
+            fallback_required=fallback_required,
+        )
+        confidence_signal = _confidence_signal(confidence_score)
         citations = [citation.model_dump() for citation in build_citations(results)]
+        chunks = [_serialize_result(result) for result in results]
 
         return {
-            "ok": True,
-            "tool_name": self.name,
             "query": query,
-            "results": citations,
+            "expanded_query": expanded_query,
+            "search_profile": search_profile.name,
+            "product_type": _dominant_value(results, "product_type"),
+            "document_type": _dominant_value(results, "document_type"),
+            "normalized_section": sorted({result.chunk.normalized_section for result in results}),
+            "chunks": chunks,
+            "citations": citations,
+            "confidence_score": confidence_score,
+            "confidence_signal": confidence_signal,
+            "fallback_required": fallback_required,
         }
+
+    def _resolve_documents(
+        self,
+        requested_document_ids: list[str],
+        requested_product_type: str | None,
+    ) -> list[dict[str, Any]]:
+        if self.firestore_service is None:
+            return []
+        if requested_document_ids:
+            records: list[dict[str, Any]] = []
+            for document_id in requested_document_ids:
+                record = self.firestore_service.get_document(document_id)
+                if record is not None:
+                    records.append(record)
+            return records
+
+        records = [
+            record
+            for record in self.firestore_service.list_documents()
+            if record.get("status") == "indexed"
+        ]
+        if requested_product_type:
+            records = [record for record in records if record.get("product_type") == requested_product_type]
+        return records
+
+
+def _serialize_result(result: RetrievalResult) -> dict[str, Any]:
+    return {
+        "document_id": result.chunk.document_id,
+        "document_name": result.chunk.document_name,
+        "document_type": result.chunk.document_type,
+        "product_type": result.chunk.product_type,
+        "chunk_id": result.chunk.chunk_id,
+        "page": result.chunk.page,
+        "end_page": result.chunk.end_page,
+        "section": result.chunk.section,
+        "normalized_section": result.chunk.normalized_section,
+        "content": result.chunk.content,
+        "embedding_score": result.embedding_score,
+        "hybrid_score": result.hybrid_score or result.score,
+    }
+
+
+def _dominant_value(results: list[RetrievalResult], field_name: str) -> str | None:
+    if not results:
+        return None
+    first_chunk = results[0].chunk
+    return str(getattr(first_chunk, field_name))
+
+
+def _confidence_signal(confidence_score: float) -> str:
+    if confidence_score >= 0.75:
+        return "high"
+    if confidence_score >= 0.45:
+        return "medium"
+    return "low"
+
+
+def _requires_fallback(results: list[RetrievalResult], search_profile: SearchProfile) -> bool:
+    if not results:
+        return True
+    top_result = results[0]
+    if (top_result.hybrid_score or top_result.score) < 0.45:
+        return True
+    if top_result.chunk.normalized_section in search_profile.negative_sections:
+        return True
+    positive_matches = sum(
+        1 for result in results[:5] if result.chunk.normalized_section in search_profile.positive_sections
+    )
+    negative_matches = sum(
+        1 for result in results[:5] if result.chunk.normalized_section in search_profile.negative_sections
+    )
+    return positive_matches == 0 or negative_matches > positive_matches
+
+
+def _optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
