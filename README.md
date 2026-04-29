@@ -99,6 +99,8 @@ flowchart LR
 
 이 프로젝트의 RAG는 단일 함수가 아니라, 교체 가능한 단계형 파이프라인으로 설계되어 있습니다. 현재 MVP에서는 비용 절감을 위해 keyword 기반 retriever를 사용하지만, 이후 Vertex AI Embedding과 Gemini 기반 generation으로 교체할 수 있도록 경계를 분리해 두었습니다.
 
+현재 검색 구조는 특정 상품 하나에 맞춘 튜닝이 아니라, 여러 보험상품군에 공통으로 적용할 수 있는 multi-product insurance RAG 전략으로 확장되었습니다. 상세 설계는 [docs/rag_pipeline.md](/Users/hwangseung-gi/codex-workspace/insurance-genai-agent-gcp/docs/rag_pipeline.md), [docs/retrieval_strategy.md](/Users/hwangseung-gi/codex-workspace/insurance-genai-agent-gcp/docs/retrieval_strategy.md), [docs/evaluation_plan.md](/Users/hwangseung-gi/codex-workspace/insurance-genai-agent-gcp/docs/evaluation_plan.md)를 참고할 수 있습니다.
+
 의도한 RAG 흐름:
 
 1. synthetic sample 약관 문서 로드

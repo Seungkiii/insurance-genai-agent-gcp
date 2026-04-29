@@ -1,13 +1,38 @@
 """Document-related schemas."""
 
+from __future__ import annotations
+
 from pydantic import BaseModel
+
+
+class DocumentRecord(BaseModel):
+    """Document metadata returned by the API."""
+
+    document_id: str
+    file_name: str
+    status: str
+    gcs_uri: str
+    product_type: str | None = None
+    document_type: str | None = None
+    created_at: str | None = None
+    error_message: str | None = None
 
 
 class DocumentUploadResponse(BaseModel):
     """Document upload response."""
 
     document_id: str
+    file_name: str
     status: str
+    gcs_uri: str
+    product_type: str | None = None
+    document_type: str | None = None
+
+
+class DocumentListResponse(BaseModel):
+    """List of persisted documents."""
+
+    documents: list[DocumentRecord]
 
 
 class DocumentIndexRequest(BaseModel):
@@ -20,5 +45,9 @@ class DocumentIndexResponse(BaseModel):
     """Document index response."""
 
     document_id: str
+    file_name: str
+    gcs_uri: str
     status: str
     chunks: int
+    product_type: str | None = None
+    document_type: str | None = None
