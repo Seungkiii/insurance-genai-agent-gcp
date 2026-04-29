@@ -68,7 +68,7 @@ class GCPFirestoreService:
         self.database = database
         self.collection_name = collection_name
         self.chat_collection_name = "chat_sessions"
-        self.design_collection_name = "design_sessions"
+        self.design_collection_name = "sessions"
         self._client = client
 
     def create_document(

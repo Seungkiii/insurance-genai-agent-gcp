@@ -104,24 +104,31 @@ class ProductRecommendTool(BaseTool):
 
         search_output = policy_result["output"] or {}
         product_type = str(search_output.get("product_type") or "unknown")
-        evidence_summary = _build_evidence_summary(search_output.get("chunks", []))
+        citations = list(search_output.get("citations", []))
+        evidence_summary = _build_evidence_summary(citations)
+        focus_areas = _build_focus_areas(product_type)
+        explanation_points = _build_explanation_points(search_output)
+        caution_notes = _build_caution_notes(search_output)
         recommended_design = {
             "session_id": session_id,
             "customer_profile": payload.get("customer_profile", {}),
             "product_type": product_type,
-            "focus_areas": RECOMMENDATION_GUIDANCE.get(
-                product_type,
-                ["핵심 보장", "지급 조건", "유의사항"],
-            ),
+            "focus_areas": focus_areas,
+            "main_focus": _build_main_focus(product_type),
+            "recommended_explanation_points": explanation_points,
+            "caution_notes": caution_notes,
+            "evidence_summary": evidence_summary,
             "note": "근거 문서에 나타난 보장 구조를 요약한 것으로, 임의 가입금액이나 확정 추천은 포함하지 않습니다.",
         }
-        explanation_points = _build_explanation_points(search_output)
-        caution_notes = _build_caution_notes(search_output)
-        current_design = None
-        if self.firestore_service is not None:
-            current_design_record = self.firestore_service.get_current_design(session_id)
-            if current_design_record is not None:
-                current_design = current_design_record.get("current_design")
+        current_design = _build_current_design(
+            session_id=session_id,
+            customer_profile=payload.get("customer_profile", {}),
+            product_type=product_type,
+            selected_document_ids=[str(item) for item in payload.get("document_ids", []) if str(item).strip()],
+            focus_areas=focus_areas,
+            caution_notes=caution_notes,
+            evidence_summary=evidence_summary,
+        )
 
         return {
             "query": query,
@@ -131,7 +138,7 @@ class ProductRecommendTool(BaseTool):
             "current_design": current_design,
             "evidence_summary": evidence_summary,
             "explanation_points": explanation_points,
-            "citations": search_output.get("citations", []),
+            "citations": citations,
             "caution_notes": caution_notes,
             "fallback_required": search_output.get("fallback_required", False),
         }
@@ -192,12 +199,24 @@ class ProductRecommendTool(BaseTool):
             caution_notes.extend(_build_caution_notes(search_output))
 
         ranking_reason = _build_ranking_reason(risk_needs, recommended_products)
+        current_design = None
+        if recommended_products:
+            top_product = recommended_products[0]
+            current_design = _build_current_design(
+                session_id=session_id,
+                customer_profile=customer_profile,
+                product_type=str(top_product.get("product_type") or "unknown"),
+                selected_document_ids=[str(top_product.get("document_id") or "")],
+                focus_areas=_build_focus_areas(str(top_product.get("product_type") or "unknown")),
+                caution_notes=list(dict.fromkeys(caution_notes)),
+                evidence_summary=_build_evidence_summary(all_citations),
+            )
         return {
             "query": query,
             "search_profile": "product_comparison" if len(recommended_products) > 1 else "coverage_summary",
             "recommended_design": None,
             "recommended_products": recommended_products,
-            "current_design": self._load_current_design(session_id),
+            "current_design": current_design or self._load_current_design(session_id),
             "ranking_reason": ranking_reason,
             "citations": all_citations,
             "caution_notes": list(dict.fromkeys(caution_notes)),
@@ -244,11 +263,13 @@ class ProductRecommendTool(BaseTool):
         return current_design_record.get("current_design")
 
 
-def _build_evidence_summary(chunks: list[dict[str, Any]]) -> list[str]:
+def _build_evidence_summary(citations: list[dict[str, Any]]) -> list[str]:
     summaries: list[str] = []
-    for chunk in chunks[:4]:
+    for citation in citations[:4]:
+        normalized_section = str(citation.get("normalized_section") or "miscellaneous")
+        summary_prefix = "유의사항 근거" if normalized_section == "exclusions" else "설명 근거"
         summaries.append(
-            f"{chunk['normalized_section']} | {chunk['section']} | {chunk['document_name']} p.{chunk['page']}"
+            f"{summary_prefix} | {normalized_section} | {citation['section']} | {citation['document_name']} p.{citation['page']}"
         )
     return summaries
 
@@ -268,7 +289,49 @@ def _build_explanation_points(search_output: dict[str, Any]) -> list[str]:
     return [
         f"{chunk['section']} 중심으로 설명"
         for chunk in chunks[:3]
+        if chunk.get("normalized_section") != "exclusions"
     ]
+
+
+def _build_focus_areas(product_type: str) -> list[str]:
+    if product_type == "annuity":
+        return [
+            "연금개시 전 고도재해장해보험금",
+            "연금개시 후 생존연금",
+            "사망보장 없는 연금보험",
+            "공시이율 변동 가능성",
+            "추가납입/중도인출",
+            "복수연금선택제도/행복설계자금/조기연금전환옵션",
+        ]
+    return RECOMMENDATION_GUIDANCE.get(product_type, ["핵심 보장", "지급 조건", "유의사항"])
+
+
+def _build_main_focus(product_type: str) -> str:
+    if product_type == "annuity":
+        return "연금개시 전후 보장 구조, 생존연금 중심 설명, 그리고 공시이율 변동 및 부가 기능 유의사항"
+    return "상품 핵심 보장과 설명 포인트"
+
+
+def _build_current_design(
+    *,
+    session_id: str,
+    customer_profile: dict[str, Any],
+    product_type: str,
+    selected_document_ids: list[str],
+    focus_areas: list[str],
+    caution_notes: list[str],
+    evidence_summary: list[str],
+) -> dict[str, Any]:
+    return {
+        "session_id": session_id,
+        "customer_profile": customer_profile,
+        "product_type": product_type,
+        "selected_document_ids": selected_document_ids,
+        "focus_areas": focus_areas,
+        "caution_notes": caution_notes,
+        "evidence_summary": evidence_summary,
+        "coverages": focus_areas,
+    }
 
 
 def _build_product_recommendation_reason(

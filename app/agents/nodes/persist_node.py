@@ -13,6 +13,7 @@ def run_persist_node(state: AgentState, firestore_service: FirestoreService) -> 
     updated = dict(state)
     started_at = float(updated.get("started_at", time.perf_counter()))
     latency_ms = int((time.perf_counter() - started_at) * 1000)
+    updated.setdefault("tool_trace", [])
 
     try:
         firestore_service.save_chat_interaction(
@@ -26,7 +27,23 @@ def run_persist_node(state: AgentState, firestore_service: FirestoreService) -> 
             intent=updated.get("intent"),
             search_profile=updated.get("search_profile"),
         )
+        if updated.get("current_design") is not None:
+            firestore_service.save_current_design(
+                updated.get("session_id", ""),
+                updated["current_design"],
+            )
         updated["persistence_error"] = None
     except Exception as exc:  # noqa: BLE001
         updated["persistence_error"] = str(exc)
+        updated["tool_trace"].append(
+            {
+                "step": len(updated["tool_trace"]) + 1,
+                "tool_name": "persist_node",
+                "status": "error",
+                "latency_ms": 0,
+                "input_summary": {"session_id": updated.get("session_id", "")},
+                "output_summary": None,
+                "error": str(exc),
+            }
+        )
     return updated

@@ -66,6 +66,7 @@ class FakeGenerator:
 class FakeFirestoreService:
     def __init__(self) -> None:
         self.saved_interactions: list[dict[str, Any]] = []
+        self.saved_designs: list[dict[str, Any]] = []
 
     def save_chat_interaction(
         self,
@@ -96,6 +97,11 @@ class FakeFirestoreService:
 
     def get_current_design(self, session_id: str) -> dict[str, Any] | None:
         return {"session_id": session_id, "current_design": {"coverages": ["기본보장"]}}
+
+    def save_current_design(self, session_id: str, design: dict[str, Any]) -> dict[str, Any]:
+        payload = {"session_id": session_id, "current_design": design}
+        self.saved_designs.append(payload)
+        return payload
 
 
 class FailingFirestoreService(FakeFirestoreService):
@@ -158,7 +164,11 @@ def create_dependencies(*, firestore_service: FakeFirestoreService | None = None
             "recommended_design": {
                 "session_id": "session-recommend",
                 "product_type": "annuity",
-                "focus_areas": ["연금개시 후 지급방식", "중도인출 유의사항"],
+                "focus_areas": ["연금개시 전 고도재해장해보험금", "연금개시 후 생존연금"],
+                "main_focus": "연금개시 전후 보장 구조",
+                "recommended_explanation_points": ["상품 특이사항 중심으로 설명", "연금지급형태 중심으로 설명"],
+                "caution_notes": ["공시이율 변동 가능성 확인 필요"],
+                "evidence_summary": ["설명 근거 | annuity_payment | 연금지급형태 | annuity.pdf p.9"],
             },
             "recommended_products": [
                 {
@@ -168,7 +178,16 @@ def create_dependencies(*, firestore_service: FakeFirestoreService | None = None
                     "recommendation_reason": "노후/연금 니즈와 잘 맞습니다.",
                 }
             ],
-            "current_design": {"coverages": ["기본보장"]},
+            "current_design": {
+                "session_id": "session-recommend",
+                "customer_profile": {"age_group": "50대"},
+                "product_type": "annuity",
+                "selected_document_ids": ["doc-1"],
+                "focus_areas": ["연금개시 전 고도재해장해보험금", "연금개시 후 생존연금"],
+                "caution_notes": ["공시이율 변동 가능성 확인 필요"],
+                "evidence_summary": ["설명 근거 | annuity_payment | 연금지급형태 | annuity.pdf p.9"],
+                "coverages": ["연금개시 전 고도재해장해보험금", "연금개시 후 생존연금"],
+            },
             "citations": [
                 {
                     "document_name": "annuity.pdf",
@@ -240,7 +259,8 @@ def test_design_recommendation_flow_runs_recommendation_then_policy_search() -> 
     assert result["intent"] == "multi_product_recommendation"
     assert result["recommended_design"] is not None
     assert result["recommended_products"]
-    assert result["current_design"] == {"coverages": ["기본보장"]}
+    assert result["current_design"]["session_id"] == "session-recommend"
+    assert result["current_design"]["product_type"] == "annuity"
     assert recommendation_tool.calls
     assert not policy_tool.calls
     assert [item["tool_name"] for item in result["tool_trace"]] == ["product_recommend_tool"]
@@ -363,3 +383,4 @@ def test_persist_node_does_not_fail_user_response_when_firestore_save_fails() ->
 
     assert result["answer"]
     assert result["persistence_error"] == "firestore unavailable"
+    assert result["tool_trace"][-1]["tool_name"] == "persist_node"

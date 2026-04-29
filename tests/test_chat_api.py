@@ -51,6 +51,7 @@ class FakeGenerator:
 class FakeFirestoreService:
     def __init__(self) -> None:
         self.saved_interactions: list[dict[str, Any]] = []
+        self.saved_designs: list[dict[str, Any]] = []
 
     def save_chat_interaction(
         self,
@@ -81,6 +82,11 @@ class FakeFirestoreService:
 
     def get_current_design(self, session_id: str) -> dict[str, Any] | None:
         return {"session_id": session_id, "current_design": {"coverages": ["기본보장"]}}
+
+    def save_current_design(self, session_id: str, design: dict[str, Any]) -> dict[str, Any]:
+        payload = {"session_id": session_id, "current_design": design}
+        self.saved_designs.append(payload)
+        return payload
 
 
 def create_test_client(
@@ -235,7 +241,11 @@ def test_chat_design_recommendation_returns_recommended_and_current_design() -> 
             "search_profile": "coverage_summary",
             "recommended_design": {
                 "product_type": "annuity",
-                "focus_areas": ["연금개시 후 지급방식", "중도인출 유의사항"],
+                "focus_areas": ["연금개시 전 고도재해장해보험금", "연금개시 후 생존연금"],
+                "main_focus": "연금개시 전후 보장 구조",
+                "recommended_explanation_points": ["연금지급형태 중심으로 설명"],
+                "caution_notes": ["공시이율 변동 가능성 확인 필요"],
+                "evidence_summary": ["설명 근거 | annuity_payment | 연금지급형태 | annuity.pdf p.9"],
             },
             "recommended_products": [
                 {
@@ -245,7 +255,16 @@ def test_chat_design_recommendation_returns_recommended_and_current_design() -> 
                     "recommendation_reason": "연금 니즈에 적합합니다.",
                 }
             ],
-            "current_design": {"coverages": ["기본보장"]},
+            "current_design": {
+                "session_id": "session-003",
+                "customer_profile": {"product_preference": "current_document"},
+                "product_type": "annuity",
+                "selected_document_ids": ["coverage-doc"],
+                "focus_areas": ["연금개시 전 고도재해장해보험금", "연금개시 후 생존연금"],
+                "caution_notes": ["공시이율 변동 가능성 확인 필요"],
+                "evidence_summary": ["설명 근거 | annuity_payment | 연금지급형태 | annuity.pdf p.9"],
+                "coverages": ["연금개시 전 고도재해장해보험금", "연금개시 후 생존연금"],
+            },
             "citations": [
                 {
                     "document_name": "annuity.pdf",
@@ -275,7 +294,9 @@ def test_chat_design_recommendation_returns_recommended_and_current_design() -> 
     payload = response.json()
     assert payload["intent"] == "single_product_advice"
     assert payload["recommended_design"]["product_type"] == "annuity"
+    assert payload["recommended_design"]["main_focus"]
     assert payload["recommended_products"][0]["product_type"] == "annuity"
-    assert payload["current_design"]["coverages"] == ["기본보장"]
+    assert payload["current_design"]["product_type"] == "annuity"
     assert recommendation_tool.calls
-    assert firestore_service.saved_interactions[0]["current_design"] == {"coverages": ["기본보장"]}
+    assert firestore_service.saved_interactions[0]["current_design"]["product_type"] == "annuity"
+    assert firestore_service.saved_designs[0]["current_design"]["session_id"] == "session-003"

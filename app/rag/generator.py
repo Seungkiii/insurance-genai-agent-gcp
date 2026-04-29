@@ -144,6 +144,7 @@ class GeminiAnswerGenerator:
             "상품요약서 기준과 실제 약관 확인 필요성을 자연스럽게 포함하세요.\n"
             "search_profile, product_type, document_type, normalized_section을 반영해 답변 구조를 조정하세요.\n"
             "summary/coverage 질문이면 주요 보장, 상품 기능, 유의사항, 근거 순으로 정리하세요.\n"
+            "coverage_summary에서는 exclusions를 주요 보장 근거로 쓰지 말고 유의사항 근거로만 사용하세요.\n"
             "single_product_advice이면 설명 포인트, 유의사항, 근거를 구분하세요.\n"
             "multi_product_recommendation이면 상품별 추천 이유를 비교형으로 정리하세요.\n"
             "product_comparison이면 상품별 보장, 유의사항, 적합 고객을 비교 요약하세요.\n"
