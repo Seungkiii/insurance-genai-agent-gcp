@@ -92,7 +92,7 @@ def create_mcp_server() -> MCPToolServer:
     )
     tool_instances: list[MCPCompatibleTool] = [
         policy_search_tool,
-        ProductRecommendTool(policy_search_tool=policy_search_tool),
+        ProductRecommendTool(policy_search_tool=policy_search_tool, firestore_service=firestore_service),
         DesignConditionTool(firestore_service=firestore_service),
     ]
     return MCPToolServer(tools={tool.name: tool for tool in tool_instances})

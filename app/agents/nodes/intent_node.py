@@ -15,17 +15,17 @@ def run_intent_node(state: AgentState) -> AgentState:
 
 
 def classify_intent(query: str) -> IntentType:
-    """Rule-based intent classifier for the MVP."""
+    """Classify the broad user intent."""
     lowered = query.lower()
 
-    if any(token in query for token in ("서류", "청구")) or "claim" in lowered:
+    if any(token in query for token in ("청구", "서류", "제출")) or "claim" in lowered:
         return "claim_document"
-    if any(token in query for token in ("변경", "수정", "조정", "줄이", "낮추", "늘리", "바꾸")):
+    if any(token in query for token in ("변경", "수정", "조정", "줄이", "낮추", "늘리", "바꾸", "추가", "제외")):
         return "design_modification"
-    if any(token in query for token in ("추천", "설계안", "설계 이력", "상품 조합")):
+    if any(token in query for token in ("추천", "설계안", "가입 설계", "상품 조합")):
         return "design_recommendation"
-    if any(token in query for token in ("약관", "보장", "면책", "지급", "특약")):
+    if any(token in query for token in ("요약", "정리", "한눈에")):
+        return "summary"
+    if any(token in query for token in ("약관", "보장", "면책", "지급", "특약", "보험료", "환급", "연금", "비교")):
         return "policy_qa"
-    if any(token in query for token in ("보험", "설계", "가입")):
-        return "general"
     return "general"

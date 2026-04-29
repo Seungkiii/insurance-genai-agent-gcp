@@ -41,6 +41,11 @@ class FirestoreService(Protocol):
         assistant_answer: str,
         citations: list[dict[str, Any]],
         latency_ms: int,
+        *,
+        tool_trace: list[dict[str, Any]] | None = None,
+        current_design: dict[str, Any] | None = None,
+        intent: str | None = None,
+        search_profile: str | None = None,
     ) -> dict[str, Any]:
         """Persist a chat interaction for audit and session review."""
 
@@ -129,6 +134,11 @@ class GCPFirestoreService:
         assistant_answer: str,
         citations: list[dict[str, Any]],
         latency_ms: int,
+        *,
+        tool_trace: list[dict[str, Any]] | None = None,
+        current_design: dict[str, Any] | None = None,
+        intent: str | None = None,
+        search_profile: str | None = None,
     ) -> dict[str, Any]:
         """Persist a chat interaction under a session-scoped collection."""
         client = self._client or self._create_client()
@@ -138,6 +148,10 @@ class GCPFirestoreService:
             "assistant_answer": assistant_answer,
             "citations": citations,
             "latency_ms": latency_ms,
+            "tool_trace": tool_trace or [],
+            "current_design": current_design,
+            "intent": intent,
+            "search_profile": search_profile,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         client.collection(self.chat_collection_name).document().set(payload)

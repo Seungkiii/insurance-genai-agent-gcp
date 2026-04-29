@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.services.firestore_service import FirestoreService
+
 from .base import BaseTool
 from .policy_search_tool import PolicySearchTool
 
@@ -22,6 +24,7 @@ class ProductRecommendTool(BaseTool):
     """Create evidence-based recommendation scaffolds from policy search results."""
 
     policy_search_tool: PolicySearchTool
+    firestore_service: FirestoreService | None = None
     name: str = "product_recommend_tool"
     description: str = (
         "Build product recommendation guidance from policy_search_tool evidence without inventing insured amounts or deterministic sales advice."
@@ -83,14 +86,21 @@ class ProductRecommendTool(BaseTool):
             "note": "근거 문서에 나타난 보장 구조를 요약한 것으로, 임의 가입금액이나 확정 추천은 포함하지 않습니다.",
         }
         caution_notes = _build_caution_notes(search_output)
+        current_design = None
+        if self.firestore_service is not None:
+            current_design_record = self.firestore_service.get_current_design(session_id)
+            if current_design_record is not None:
+                current_design = current_design_record.get("current_design")
 
         return {
             "query": query,
             "search_profile": search_output.get("search_profile"),
             "recommended_design": recommended_design,
+            "current_design": current_design,
             "evidence_summary": evidence_summary,
             "citations": search_output.get("citations", []),
             "caution_notes": caution_notes,
+            "fallback_required": search_output.get("fallback_required", False),
         }
 
 
