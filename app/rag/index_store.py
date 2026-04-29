@@ -34,6 +34,7 @@ class IndexStore:
                 "document_name": chunk.document_name,
                 "page": chunk.page,
                 "section": chunk.section,
+                "content": chunk.content,
                 "embedding": embedding,
             }
             for chunk, embedding in zip(chunks, embeddings, strict=False)

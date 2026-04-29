@@ -9,7 +9,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REQUIRED_RUNTIME_SETTINGS = (
     "VERTEX_AI_PROJECT_ID",
-    "VERTEX_AI_LOCATION",
+    "VERTEX_AI_EMBEDDING_LOCATION",
+    "VERTEX_AI_GENERATION_LOCATION",
     "FIRESTORE_DATABASE",
     "GCS_BUCKET_NAME",
     "GEMINI_MODEL_NAME",
@@ -26,6 +27,8 @@ class Settings(BaseSettings):
 
     vertex_ai_project_id: str | None = Field(default=None, alias="VERTEX_AI_PROJECT_ID")
     vertex_ai_location: str | None = Field(default=None, alias="VERTEX_AI_LOCATION")
+    vertex_ai_embedding_location: str | None = Field(default=None, alias="VERTEX_AI_EMBEDDING_LOCATION")
+    vertex_ai_generation_location: str | None = Field(default=None, alias="VERTEX_AI_GENERATION_LOCATION")
     firestore_database: str | None = Field(default=None, alias="FIRESTORE_DATABASE")
     gcs_bucket_name: str | None = Field(default=None, alias="GCS_BUCKET_NAME")
     gemini_model_name: str | None = Field(default=None, alias="GEMINI_MODEL_NAME")
@@ -44,8 +47,10 @@ class Settings(BaseSettings):
         missing: list[str] = []
         if not self.vertex_ai_project_id:
             missing.append("VERTEX_AI_PROJECT_ID")
-        if not self.vertex_ai_location:
-            missing.append("VERTEX_AI_LOCATION")
+        if not self.effective_embedding_location:
+            missing.append("VERTEX_AI_EMBEDDING_LOCATION")
+        if not self.effective_generation_location:
+            missing.append("VERTEX_AI_GENERATION_LOCATION")
         if not self.firestore_database:
             missing.append("FIRESTORE_DATABASE")
         if not self.gcs_bucket_name:
@@ -60,6 +65,16 @@ class Settings(BaseSettings):
     def is_ready(self) -> bool:
         """Return True when required runtime settings are present."""
         return not self.missing_required_settings
+
+    @property
+    def effective_embedding_location(self) -> str | None:
+        """Return embedding location, falling back to shared Vertex AI location."""
+        return self.vertex_ai_embedding_location or self.vertex_ai_location
+
+    @property
+    def effective_generation_location(self) -> str | None:
+        """Return generation location, falling back to shared Vertex AI location."""
+        return self.vertex_ai_generation_location or self.vertex_ai_location
 
 
 @lru_cache(maxsize=1)

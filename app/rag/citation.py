@@ -1,4 +1,4 @@
-"""Citation helpers for converting retrieval results into API payloads."""
+"""Citation helpers for chat responses."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from app.schemas.chat_schema import Citation
 
 
 def build_citations(results: list[RetrievalResult]) -> list[Citation]:
-    """Convert retrieval results into deduplicated citation objects."""
+    """Convert retrieval results into deduplicated citations with previews and scores."""
     citations: list[Citation] = []
     seen: set[tuple[str, str, int, str]] = set()
 
@@ -26,8 +26,16 @@ def build_citations(results: list[RetrievalResult]) -> list[Citation]:
                 document_name=result.chunk.document_name,
                 section=result.chunk.section,
                 page=result.chunk.page,
-                content=result.chunk.content,
+                content_preview=_build_preview(result.chunk.content),
+                score=round(result.score, 4),
             )
         )
 
     return citations
+
+
+def _build_preview(content: str, limit: int = 180) -> str:
+    """Build a short readable preview for chat citations."""
+    if len(content) <= limit:
+        return content
+    return f"{content[:limit].rstrip()}..."
