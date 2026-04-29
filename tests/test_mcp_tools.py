@@ -165,7 +165,7 @@ def test_policy_search_tool_uses_hybrid_rag_and_returns_fallback_signal() -> Non
 
 def test_product_recommend_tool_builds_product_type_specific_summary() -> None:
     policy_tool = create_policy_search_tool()
-    tool = ProductRecommendTool(policy_search_tool=policy_tool)
+    tool = ProductRecommendTool(policy_search_tool=policy_tool, firestore_service=MockFirestoreService())
 
     result = tool.run(
         {
@@ -179,7 +179,13 @@ def test_product_recommend_tool_builds_product_type_specific_summary() -> None:
     assert result["status"] == "success"
     output = result["output"]
     assert output["recommended_design"]["product_type"] == "annuity"
-    assert "연금개시 후 지급방식" in output["recommended_design"]["focus_areas"]
+    assert "연금개시 전 고도재해장해보험금" in output["recommended_design"]["focus_areas"]
+    assert output["recommended_design"]["main_focus"]
+    assert output["recommended_design"]["recommended_explanation_points"]
+    assert output["recommended_design"]["caution_notes"]
+    assert output["recommended_design"]["evidence_summary"]
+    assert output["current_design"]["session_id"] == "session-1"
+    assert output["current_design"]["product_type"] == "annuity"
     assert output["citations"]
 
 

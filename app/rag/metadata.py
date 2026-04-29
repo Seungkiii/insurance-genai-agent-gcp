@@ -79,6 +79,11 @@ def normalize_section(section_title: str, content: str) -> NormalizedSection:
         "지급금액",
         "급부명",
         "장해지급률",
+        "80%이상",
+        "80%이상인경우",
+        "80% 이상",
+        "1,000만원",
+        "1000만원",
         "보험금1,000만원",
         "보험금1000만원",
         "고도재해장해보험금",
@@ -86,9 +91,11 @@ def normalize_section(section_title: str, content: str) -> NormalizedSection:
     exclusion_content_terms = (
         "계약전알릴의무",
         "지급제한",
+        "보험금지급이제한",
         "보장하지않는",
         "면책",
         "고의",
+        "고의또는중대한과실",
         "해지할수있으며",
         "보험금을받지못하는경우",
     )
@@ -99,9 +106,14 @@ def normalize_section(section_title: str, content: str) -> NormalizedSection:
         return "eligibility"
     if any(term in compact for term in ("연금지급형태", "생존연금", "행복설계자금", "연금개시후보험기간", "연금개시후", "연금개시전", "복수연금선택제도", "조기연금전환옵션", "추가납입", "중도인출")):
         return "annuity_payment"
+    if any(term in body_compact for term in exclusion_content_terms):
+        return "exclusions"
     if any(term in body_compact for term in coverage_content_terms):
         return "coverage"
-    if any(term in body_compact for term in exclusion_content_terms):
+    if (
+        any(term in title_compact for term in ("보험금지급사유", "보험급부", "지급금액"))
+        and any(term in body_compact for term in exclusion_content_terms)
+    ):
         return "exclusions"
     if any(term in title_compact for term in ("보험금지급사유", "보험급부", "지급금액")):
         return "coverage"
