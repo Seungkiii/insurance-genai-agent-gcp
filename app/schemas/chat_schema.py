@@ -9,7 +9,10 @@ class ChatRequest(BaseModel):
     """Incoming chat request payload."""
 
     question: str = Field(..., min_length=1, validation_alias=AliasChoices("question", "query"))
-    session_id: str | None = None
+    session_id: str
+    document_ids: list[str] = Field(default_factory=list)
+    top_k: int = Field(default=5, ge=1, le=20)
+    top_k_per_document: int = Field(default=3, ge=1, le=10)
 
 
 class Citation(BaseModel):
@@ -18,7 +21,13 @@ class Citation(BaseModel):
     document_name: str
     page: int
     section: str
-    content: str
+    normalized_section: str | None = None
+    document_type: str | None = None
+    product_type: str | None = None
+    content_preview: str
+    score: float
+    embedding_score: float | None = None
+    hybrid_score: float | None = None
 
 
 class RecommendedDesign(BaseModel):
@@ -37,8 +46,11 @@ class ChatResponse(BaseModel):
     answer: str
     recommended_design: RecommendedDesign | None = None
     citations: list[Citation]
+    search_profile: str | None = None
     confidence_score: float
+    fallback_required: bool | None = None
     follow_up_questions: list[str] = Field(default_factory=list)
+    tool_trace: list[str] = Field(default_factory=list)
     disclaimer: str
 
 

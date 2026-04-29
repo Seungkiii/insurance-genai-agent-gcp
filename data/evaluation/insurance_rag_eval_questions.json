@@ -1,0 +1,186 @@
+[
+  {
+    "question": "이 상품의 주요 보장 내용은 뭐야?",
+    "expected_profile": "coverage_summary",
+    "expected_product_type": "annuity",
+    "expected_positive_sections": ["product_overview", "coverage", "rider", "exclusions"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["보장", "보험금 지급사유"]
+  },
+  {
+    "question": "연금개시 후에는 어떤 방식으로 연금을 지급해?",
+    "expected_profile": "pension_payment",
+    "expected_product_type": "annuity",
+    "expected_positive_sections": ["annuity_payment", "eligibility"],
+    "expected_negative_sections": ["premium", "fee", "refund"],
+    "required_keywords": ["연금지급형태", "생존연금"]
+  },
+  {
+    "question": "중도인출은 어떻게 할 수 있어?",
+    "expected_profile": "general_policy_qa",
+    "expected_product_type": "annuity",
+    "expected_positive_sections": ["product_overview", "coverage"],
+    "expected_negative_sections": ["fee"],
+    "required_keywords": ["중도인출", "계약자적립액"]
+  },
+  {
+    "question": "해약환급금은 어떻게 산출돼?",
+    "expected_profile": "surrender_refund",
+    "expected_product_type": "annuity",
+    "expected_positive_sections": ["refund", "fee"],
+    "expected_negative_sections": ["coverage"],
+    "required_keywords": ["해약환급금", "환급률"]
+  },
+  {
+    "question": "사망보험금은 어떻게 지급돼?",
+    "expected_profile": "death_benefit",
+    "expected_product_type": "whole_life",
+    "expected_positive_sections": ["death_benefit", "coverage", "product_overview"],
+    "expected_negative_sections": ["premium", "fee"],
+    "required_keywords": ["사망보험금", "지급"]
+  },
+  {
+    "question": "사망보험금이 체증되는 구조야?",
+    "expected_profile": "death_benefit",
+    "expected_product_type": "whole_life",
+    "expected_positive_sections": ["death_benefit", "product_overview"],
+    "expected_negative_sections": ["premium", "fee"],
+    "required_keywords": ["체증", "사망보험금"]
+  },
+  {
+    "question": "해약환급금 일부지급형이 뭐야?",
+    "expected_profile": "surrender_refund",
+    "expected_product_type": "whole_life",
+    "expected_positive_sections": ["refund", "product_overview"],
+    "expected_negative_sections": ["coverage"],
+    "required_keywords": ["해약환급금 일부지급형", "환급"]
+  },
+  {
+    "question": "피보험자 변경이나 전환 기능이 있어?",
+    "expected_profile": "general_policy_qa",
+    "expected_product_type": "whole_life",
+    "expected_positive_sections": ["product_overview", "eligibility"],
+    "expected_negative_sections": ["fee"],
+    "required_keywords": ["전환", "변경"]
+  },
+  {
+    "question": "암 진단비는 어떤 암을 보장해?",
+    "expected_profile": "cancer_coverage",
+    "expected_product_type": "cancer",
+    "expected_positive_sections": ["cancer_benefit", "coverage", "exclusions"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["암진단비", "고액암", "일반암"]
+  },
+  {
+    "question": "고액암과 소액암 보장이 어떻게 달라?",
+    "expected_profile": "cancer_coverage",
+    "expected_product_type": "cancer",
+    "expected_positive_sections": ["cancer_benefit", "coverage"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["고액암", "소액암"]
+  },
+  {
+    "question": "암보험 면책기간이나 감액기간이 있어?",
+    "expected_profile": "cancer_coverage",
+    "expected_product_type": "cancer",
+    "expected_positive_sections": ["cancer_benefit", "exclusions"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["면책기간", "감액기간"]
+  },
+  {
+    "question": "보장체증형은 어떤 구조야?",
+    "expected_profile": "cancer_coverage",
+    "expected_product_type": "cancer",
+    "expected_positive_sections": ["cancer_benefit", "product_overview"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["보장체증형"]
+  },
+  {
+    "question": "주요 질환 보장 내용은 뭐야?",
+    "expected_profile": "health_coverage",
+    "expected_product_type": "health",
+    "expected_positive_sections": ["health_benefit", "coverage", "exclusions"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["질환", "보장"]
+  },
+  {
+    "question": "2대 질환이나 3대 질환 보장이 있어?",
+    "expected_profile": "health_coverage",
+    "expected_product_type": "health",
+    "expected_positive_sections": ["health_benefit", "coverage"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["2대 질환", "3대 질환"]
+  },
+  {
+    "question": "치매 보장은 어떻게 돼?",
+    "expected_profile": "health_coverage",
+    "expected_product_type": "health",
+    "expected_positive_sections": ["health_benefit", "coverage"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["치매"]
+  },
+  {
+    "question": "환급형 구조가 있어?",
+    "expected_profile": "surrender_refund",
+    "expected_product_type": "health",
+    "expected_positive_sections": ["refund", "product_overview"],
+    "expected_negative_sections": ["coverage"],
+    "required_keywords": ["환급형", "환급"]
+  },
+  {
+    "question": "재해사망이나 재해장해는 어떻게 보장돼?",
+    "expected_profile": "accident_coverage",
+    "expected_product_type": "accident",
+    "expected_positive_sections": ["accident_benefit", "coverage", "exclusions"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["재해사망", "재해장해"]
+  },
+  {
+    "question": "직업급수에 따라 보험료가 달라져?",
+    "expected_profile": "accident_coverage",
+    "expected_product_type": "accident",
+    "expected_positive_sections": ["accident_benefit", "premium"],
+    "expected_negative_sections": ["refund"],
+    "required_keywords": ["직업급수", "보험료"]
+  },
+  {
+    "question": "장해지급률 기준이 있어?",
+    "expected_profile": "accident_coverage",
+    "expected_product_type": "accident",
+    "expected_positive_sections": ["accident_benefit", "coverage"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["장해지급률"]
+  },
+  {
+    "question": "임플란트 보장은 어떻게 돼?",
+    "expected_profile": "dental_coverage",
+    "expected_product_type": "dental",
+    "expected_positive_sections": ["dental_benefit", "coverage", "exclusions"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["임플란트"]
+  },
+  {
+    "question": "크라운 치료도 보장돼?",
+    "expected_profile": "dental_coverage",
+    "expected_product_type": "dental",
+    "expected_positive_sections": ["dental_benefit", "coverage"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["크라운"]
+  },
+  {
+    "question": "보존치료와 보철치료 차이가 뭐야?",
+    "expected_profile": "dental_coverage",
+    "expected_product_type": "dental",
+    "expected_positive_sections": ["dental_benefit", "coverage"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["보존치료", "보철치료"]
+  },
+  {
+    "question": "치아보험 면책기간이나 감액기간이 있어?",
+    "expected_profile": "dental_coverage",
+    "expected_product_type": "dental",
+    "expected_positive_sections": ["dental_benefit", "exclusions"],
+    "expected_negative_sections": ["premium", "refund", "fee"],
+    "required_keywords": ["면책기간", "감액기간"]
+  }
+]
