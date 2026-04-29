@@ -14,6 +14,7 @@ def _result(section: str, normalized_section: str, score: float) -> RetrievalRes
         product_type="annuity",
         chunk_id=f"{section}-{normalized_section}",
         page=1,
+        end_page=1,
         section=section,
         normalized_section=normalized_section,
         content="sample",

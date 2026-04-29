@@ -45,6 +45,7 @@ def test_pdf_parser_extracts_text_and_detects_sections(monkeypatch, tmp_path) ->
     assert document.document_name == "sample_product.pdf"
     assert any(section.heading == "보험금 지급사유" for section in document.sections)
     assert any(section.heading == "청구 서류" for section in document.sections)
+    assert all(section.heading != "일반" for section in document.sections)
     assert any("보험금 청구서" in section.content for section in document.sections)
 
 

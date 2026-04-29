@@ -32,7 +32,7 @@
 
 현재 `Dockerfile`은 다음 기준으로 작성되어 있습니다.
 
-- `python:3.11-slim` 사용
+- `python:3.12-slim` 사용
 - `requirements.txt` 기반 의존성 설치
 - `app`, `data`, `docs`, `README.md`만 이미지에 복사
 - `PORT=8080` 기준으로 `uvicorn` 실행
@@ -147,6 +147,38 @@ gcloud run deploy insurance-genai-agent-api \
 ```
 
 이 방식은 실제 secret 값을 workflow YAML이나 저장소에 남기지 않는다는 점에서 안전합니다.
+
+## 장애 확인 순서
+
+Cloud Run에서 `Container failed to start and listen on the port`가 보이면, `PORT` 설정만 보지 말고 revision 내부 traceback을 먼저 확인하는 것이 정확합니다.
+
+1. 최근 revision 로그 확인
+
+```bash
+gcloud logging read \
+  'resource.type=cloud_run_revision AND resource.labels.service_name=insurance-genai-agent-api' \
+  --project=YOUR_PROJECT_ID \
+  --limit=50 \
+  --freshness=30m \
+  --format='value(timestamp,textPayload,jsonPayload.message,jsonPayload.exception)'
+```
+
+2. 서비스 상태 확인
+
+```bash
+gcloud run services describe insurance-genai-agent-api \
+  --project=YOUR_PROJECT_ID \
+  --region=asia-northeast3
+```
+
+3. 로컬 컨테이너 부팅 검증
+
+```bash
+docker build -t insurance-genai-agent-api:local .
+docker run --rm -p 8080:8080 insurance-genai-agent-api:local
+```
+
+애플리케이션은 시작 시 `application_starting` 구조화 로그를 남기며, 여기에 Python 버전, `PORT`, readiness 기준의 필수 환경변수 누락 여부가 포함됩니다. 배포 실패 시 traceback과 이 로그를 함께 보면 원인 파악이 훨씬 빨라집니다.
 
 ## 비용 절감을 위한 Cloud Run 설정
 
