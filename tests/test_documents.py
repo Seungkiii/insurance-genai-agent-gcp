@@ -47,6 +47,24 @@ class FakeFirestoreService:
     def get_document(self, document_id: str) -> dict[str, str] | None:
         return self.records.get(document_id)
 
+    def update_document_status(
+        self,
+        document_id: str,
+        status: str,
+        *,
+        error_message: str | None = None,
+        **extra_fields: str,
+    ) -> dict[str, str] | None:
+        record = self.records.get(document_id)
+        if record is None:
+            return None
+        record["status"] = status
+        if error_message is not None:
+            record["error_message"] = error_message
+        for key, value in extra_fields.items():
+            record[key] = value
+        return record
+
 
 def create_test_client() -> tuple[TestClient, FakeFirestoreService]:
     """Create an app client with mocked GCP services."""

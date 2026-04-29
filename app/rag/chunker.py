@@ -19,9 +19,12 @@ class RAGChunk:
 
     document_id: str
     document_name: str
+    document_type: str
+    product_type: str
     chunk_id: str
     page: int
     section: str
+    normalized_section: str
     content: str
 
 
@@ -52,9 +55,12 @@ def chunk_document(
                 RAGChunk(
                     document_id=document.document_id,
                     document_name=document.document_name,
+                    document_type=document.document_type,
+                    product_type=document.product_type,
                     chunk_id=f"{document.document_id}-chunk-{chunk_index:04d}",
                     page=section.page,
                     section=section.heading,
+                    normalized_section=section.normalized_section,
                     content=part,
                 )
             )

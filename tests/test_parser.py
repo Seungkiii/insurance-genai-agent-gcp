@@ -55,5 +55,5 @@ def test_detect_section_heading_ignores_narrative_sentences() -> None:
 
 def test_classify_section_separates_refund_and_fee_content_from_coverage() -> None:
     """Generic coverage headings should be refined when content is really about refund or fees."""
-    assert classify_section("보장", "상기 예시된 금액 및 환급률 등이 미래의 수익을 보장하는 것은 아닙니다.") == "환급률"
-    assert classify_section("보장", "2년 이내: 기본보험료의 0.100%(50,000원) 계약관리비용 매월") == "수수료"
+    assert classify_section("보장", "상기 예시된 금액 및 환급률 등이 미래의 수익을 보장하는 것은 아닙니다.") == "refund"
+    assert classify_section("보장", "2년 이내: 기본보험료의 0.100%(50,000원) 계약관리비용 매월") == "fee"

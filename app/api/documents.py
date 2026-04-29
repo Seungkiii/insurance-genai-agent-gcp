@@ -12,6 +12,7 @@ from app.core.config import Settings, get_settings
 from app.rag.chunker import chunk_document
 from app.rag.embedder import DummyEmbedder, Embedder, VertexAIEmbedder
 from app.rag.index_store import IndexStore
+from app.rag.metadata import classify_document_type, classify_product_type
 from app.rag.parser import PDFDocumentParser
 from app.schemas.document_schema import (
     DocumentIndexResponse,
@@ -83,11 +84,20 @@ async def upload_document(
         content=content,
         content_type=file.content_type or "application/pdf",
     )
+    file_name_only = file.filename or ""
     record = firestore_service.create_document(
         document_id=document_id,
-        file_name=file.filename,
+        file_name=file_name_only,
         gcs_uri=gcs_uri,
         status="uploaded",
+    )
+    document_type = classify_document_type("", file_name_only)
+    product_type = classify_product_type("", file_name_only)
+    firestore_service.update_document_status(
+        document_id,
+        "uploaded",
+        document_type=document_type,
+        product_type=product_type,
     )
 
     return DocumentUploadResponse(
@@ -95,6 +105,8 @@ async def upload_document(
         file_name=record["file_name"],
         status=record["status"],
         gcs_uri=record["gcs_uri"],
+        product_type=product_type,
+        document_type=document_type,
     )
 
 
@@ -154,6 +166,8 @@ def index_document(
             "indexed",
             error_message=None,
             chunk_count=len(chunks),
+            product_type=parsed_document.product_type,
+            document_type=parsed_document.document_type,
         )
         response_record = updated or record
         return DocumentIndexResponse(
@@ -162,6 +176,8 @@ def index_document(
             gcs_uri=response_record["gcs_uri"],
             status=response_record["status"],
             chunks=response_record.get("chunk_count", len(chunks)),
+            product_type=response_record.get("product_type", parsed_document.product_type),
+            document_type=response_record.get("document_type", parsed_document.document_type),
         )
     except Exception as exc:  # noqa: BLE001
         firestore_service.update_document_status(

@@ -8,16 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.config import Settings, get_settings
 from app.rag.citation import build_citations
+from app.rag.confidence import compute_confidence_score
 from app.rag.embedder import Embedder, VertexAIEmbedder
 from app.rag.generator import GeminiAnswerGenerator, build_low_confidence_answer
-from app.rag.retriever import (
-    GcsEmbeddingRetriever,
-    RetrievalResult,
-    expand_query,
-    has_cost_or_refund_intent,
-    has_major_coverage_alignment,
-    is_major_coverage_question,
-)
+from app.rag.retriever import GcsEmbeddingRetriever, RetrievalResult
+from app.rag.search_profiles import SearchProfile, build_expanded_query, classify_search_profile
 from app.schemas.chat_schema import ChatRequest, ChatResponse
 from app.services.firestore_service import FirestoreService, GCPFirestoreService
 from app.services.gcp_storage_service import GCPStorageService, StorageService
@@ -100,34 +95,79 @@ def chat(
     """Answer a question using indexed document embeddings and Gemini generation."""
     started_at = time.perf_counter()
 
+    target_documents = _resolve_target_documents(request.document_ids, firestore_service)
+    product_types = [record.get("product_type", "unknown") for record in target_documents]
+    search_profile = classify_search_profile(request.question)
+    expanded_query = build_expanded_query(request.question, search_profile, product_types=product_types)
+    tool_trace = [
+        f"profile={search_profile.name}",
+        f"expanded_query={expanded_query}",
+        f"document_count={len(target_documents)}",
+    ]
+
     retriever = GcsEmbeddingRetriever(storage_service, settings.gcs_bucket_name or "")
-    query_embedding = embedder.embed_texts([request.question])[0]
+    query_embedding = embedder.embed_texts([expanded_query])[0]
     results = retriever.retrieve(
         query_embedding,
-        request.document_ids,
+        [record["document_id"] for record in target_documents],
         top_k=request.top_k,
         question=request.question,
+        search_profile=search_profile,
+        top_k_per_document=request.top_k_per_document,
     )
-    results = _maybe_retry_major_coverage_search(
-        question=request.question,
-        document_ids=request.document_ids,
-        top_k=request.top_k,
-        retriever=retriever,
-        embedder=embedder,
-        initial_results=results,
-    )
-    citations = build_citations(results)
-    confidence_score = _compute_confidence_score(request.question, results)
-    top_score = results[0].score if results else 0.0
 
-    if not results or top_score < 0.45 or confidence_score < 0.45:
-        answer = build_low_confidence_answer()
+    fallback_required = _requires_fallback(results, search_profile)
+    if fallback_required and search_profile.expansion_terms:
+        fallback_query = build_expanded_query(
+            request.question,
+            search_profile,
+            product_types=product_types,
+            max_terms=10,
+            include_product_context=True,
+        )
+        fallback_embedding = embedder.embed_texts([fallback_query])[0]
+        fallback_results = retriever.retrieve(
+            fallback_embedding,
+            [record["document_id"] for record in target_documents],
+            top_k=request.top_k,
+            question=fallback_query,
+            search_profile=search_profile,
+            top_k_per_document=request.top_k_per_document,
+        )
+        if fallback_results:
+            results = fallback_results
+            tool_trace.append("fallback_retrieval=true")
+
+    citations = build_citations(results)
+    provisional_answer = None
+    if not results:
+        provisional_answer = build_low_confidence_answer()
+    confidence_score = compute_confidence_score(
+        results=results,
+        profile=search_profile,
+        fallback_required=fallback_required,
+        answer=provisional_answer,
+    )
+
+    if not results or confidence_score < 0.45:
+        answer = provisional_answer or build_low_confidence_answer()
         follow_up_questions = [
-            "보험상품명, 보장 항목, 사고 내용, 청구 서류 종류 중 어떤 정보를 더 알려주실 수 있나요?"
+            "보장 내용, 지급 조건, 보험료, 해약환급금, 청구 서류 중 어떤 항목을 더 자세히 확인할까요?"
         ]
     else:
-        answer = generator.generate(request.question, results)
-        follow_up_questions = ["다른 약관 조항이나 청구 서류 항목도 함께 확인해드릴까요?"]
+        answer = generator.generate(
+            request.question,
+            results,
+            search_profile=search_profile,
+            fallback_required=fallback_required,
+        )
+        confidence_score = compute_confidence_score(
+            results=results,
+            profile=search_profile,
+            fallback_required=fallback_required,
+            answer=answer,
+        )
+        follow_up_questions = ["다른 보장 항목이나 약관 기준도 함께 확인해드릴까요?"]
 
     latency_ms = int((time.perf_counter() - started_at) * 1000)
     firestore_service.save_chat_interaction(
@@ -143,84 +183,48 @@ def chat(
         intent="policy_qa",
         answer=answer,
         citations=citations,
+        search_profile=search_profile.name,
         confidence_score=confidence_score,
+        fallback_required=fallback_required,
         follow_up_questions=follow_up_questions,
+        tool_trace=tool_trace,
         disclaimer=GUARDRAIL_DISCLAIMER,
     )
 
 
-def _maybe_retry_major_coverage_search(
-    *,
-    question: str,
-    document_ids: list[str],
-    top_k: int,
-    retriever: GcsEmbeddingRetriever,
-    embedder: Embedder,
-    initial_results: list[RetrievalResult],
-) -> list[RetrievalResult]:
-    """Retry retrieval with expanded coverage terms when the first pass is misaligned."""
-    if not is_major_coverage_question(question):
-        return initial_results
-    if has_major_coverage_alignment(initial_results):
-        return initial_results
+def _resolve_target_documents(
+    requested_document_ids: list[str],
+    firestore_service: FirestoreService,
+) -> list[dict[str, object]]:
+    """Resolve chat target documents from explicit ids or all indexed documents."""
+    if requested_document_ids:
+        documents: list[dict[str, object]] = []
+        for document_id in requested_document_ids:
+            record = firestore_service.get_document(document_id)
+            if record is not None:
+                documents.append(record)
+        return documents
 
-    expanded_query = expand_query(question)
-    expanded_embedding = embedder.embed_texts([expanded_query])[0]
-    fallback_results = retriever.retrieve(
-        expanded_embedding,
-        document_ids,
-        top_k=top_k,
-        question=expanded_query,
-    )
-    if not fallback_results:
-        return initial_results
-
-    merged: dict[str, RetrievalResult] = {}
-    for result in initial_results + fallback_results:
-        existing = merged.get(result.chunk.chunk_id)
-        if existing is None or result.score > existing.score:
-            merged[result.chunk.chunk_id] = result
-
-    reranked = sorted(merged.values(), key=lambda item: item.score, reverse=True)
-    return reranked[:top_k]
+    return [
+        record
+        for record in firestore_service.list_documents()
+        if record.get("status") == "indexed"
+    ]
 
 
-def _compute_confidence_score(question: str, results: list[RetrievalResult]) -> float:
-    """Combine top score, citation count, and average score into a bounded confidence score."""
+def _requires_fallback(results: list[RetrievalResult], search_profile: SearchProfile) -> bool:
+    """Return True when retrieval mostly misses the profile's positive sections."""
     if not results:
-        return 0.0
-
-    scores = [float(result.score) for result in results]
-    top_score = max(scores)
-    average_score = sum(scores) / len(scores)
-    citation_count = len(scores)
-    section_alignment = _compute_section_alignment(question, results)
-
-    confidence = (top_score * 0.3) + (average_score * 0.25) + (section_alignment * 0.35) + min(
-        citation_count / 20.0,
-        0.1,
+        return True
+    top_result = results[0]
+    if (top_result.hybrid_score or top_result.score) < 0.45:
+        return True
+    if top_result.chunk.normalized_section in search_profile.negative_sections:
+        return True
+    positive_matches = sum(
+        1 for result in results[:5] if result.chunk.normalized_section in search_profile.positive_sections
     )
-    return round(min(0.99, confidence), 2)
-
-
-def _compute_section_alignment(question: str, results: list[RetrievalResult]) -> float:
-    """Measure how well retrieved sections match the question intent."""
-    if not results:
-        return 0.0
-
-    if is_major_coverage_question(question):
-        aligned = sum(
-            1
-            for result in results[:5]
-            if result.chunk.section in {"상품 특이사항", "보험금 지급사유", "보험급부", "지급금액", "고도재해장해보험금", "생존연금", "연금지급형태", "연금개시전", "연금개시후", "보장하는 손해"}
-        )
-        penalized = sum(
-            1
-            for result in results[:5]
-            if result.chunk.section in {"보험료", "수수료", "해약환급금", "환급률"}
-        )
-        if has_cost_or_refund_intent(question):
-            penalized = 0
-        return max(0.0, min(1.0, (aligned * 0.3) + 0.2 - (penalized * 0.2)))
-
-    return 0.2
+    negative_matches = sum(
+        1 for result in results[:5] if result.chunk.normalized_section in search_profile.negative_sections
+    )
+    return positive_matches == 0 or negative_matches > positive_matches

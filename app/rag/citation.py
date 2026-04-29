@@ -25,9 +25,14 @@ def build_citations(results: list[RetrievalResult]) -> list[Citation]:
             Citation(
                 document_name=result.chunk.document_name,
                 section=result.chunk.section,
+                normalized_section=result.chunk.normalized_section,
+                document_type=result.chunk.document_type,
+                product_type=result.chunk.product_type,
                 page=result.chunk.page,
                 content_preview=_build_preview(result.chunk.content),
-                score=round(result.score, 4),
+                score=round(result.hybrid_score or result.score, 4),
+                embedding_score=round(result.embedding_score or 0.0, 4),
+                hybrid_score=round(result.hybrid_score or result.score, 4),
             )
         )
 
