@@ -9,8 +9,8 @@ from app.rag.retriever import (
     GcsEmbeddingRetriever,
     KeywordChunkRetriever,
     cosine_similarity,
-    expand_query,
 )
+from app.rag.search_profiles import SEARCH_PROFILES, build_expanded_query
 
 
 class FakeStorageService:
@@ -29,17 +29,23 @@ def test_keyword_retriever_finds_relevant_claim_document_chunks() -> None:
         RAGChunk(
             document_id="doc-001",
             document_name="sample_policy.md",
+            document_type="product_summary",
+            product_type="health",
             chunk_id="doc-001-chunk-0001",
             page=1,
             section="청구 서류",
+            normalized_section="claim",
             content="1. 보험금 청구서",
         ),
         RAGChunk(
             document_id="doc-001",
             document_name="sample_policy.md",
+            document_type="product_summary",
+            product_type="health",
             chunk_id="doc-001-chunk-0002",
             page=1,
             section="보장",
+            normalized_section="coverage",
             content="입원일당 보장 안내",
         ),
     ]
@@ -60,9 +66,12 @@ def test_embedding_retriever_loads_jsonl_and_sorts_by_cosine_similarity() -> Non
                 {
                     "document_id": "doc-101",
                     "document_name": "policy-a.pdf",
+                    "document_type": "policy_terms",
+                    "product_type": "health",
                     "chunk_id": "doc-101-chunk-0001",
                     "page": 2,
                     "section": "보험금 지급",
+                    "normalized_section": "coverage",
                     "content": "보험금 지급 기준은 약관에 따릅니다.",
                     "embedding": [1.0, 0.0, 0.0],
                 }
@@ -71,9 +80,12 @@ def test_embedding_retriever_loads_jsonl_and_sorts_by_cosine_similarity() -> Non
                 {
                     "document_id": "doc-101",
                     "document_name": "policy-a.pdf",
+                    "document_type": "product_summary",
+                    "product_type": "health",
                     "chunk_id": "doc-101-chunk-0002",
                     "page": 3,
                     "section": "청구 서류",
+                    "normalized_section": "claim",
                     "content": "보험금 청구서와 신분증 사본이 필요합니다.",
                     "embedding": [0.0, 1.0, 0.0],
                 }
@@ -106,9 +118,12 @@ def test_embedding_retriever_boosts_coverage_sections_for_major_coverage_questio
                 {
                     "document_id": "doc-202",
                     "document_name": "policy-b.pdf",
+                    "document_type": "product_summary",
+                    "product_type": "annuity",
                     "chunk_id": "doc-202-chunk-0001",
                     "page": 22,
                     "section": "보험료",
+                    "normalized_section": "premium",
                     "content": "1차월 기본보험료의 3.400%(1,700,000원) 및 계약관리비용 안내",
                     "embedding": [1.0, 0.0],
                 }
@@ -117,9 +132,12 @@ def test_embedding_retriever_boosts_coverage_sections_for_major_coverage_questio
                 {
                     "document_id": "doc-202",
                     "document_name": "policy-b.pdf",
+                    "document_type": "product_summary",
+                    "product_type": "annuity",
                     "chunk_id": "doc-202-chunk-0002",
                     "page": 7,
                     "section": "보험금 지급사유",
+                    "normalized_section": "coverage",
                     "content": "보험금 지급사유와 지급금액을 안내합니다.",
                     "embedding": [0.97, 0.0],
                 }
@@ -136,6 +154,7 @@ def test_embedding_retriever_boosts_coverage_sections_for_major_coverage_questio
         ["doc-202"],
         top_k=2,
         question="이 상품의 주요 보장 내용은 뭐야?",
+        search_profile=SEARCH_PROFILES["coverage_summary"],
     )
 
     assert results[0].chunk.section == "보험금 지급사유"
@@ -144,7 +163,10 @@ def test_embedding_retriever_boosts_coverage_sections_for_major_coverage_questio
 
 def test_expand_query_adds_major_coverage_terms() -> None:
     """Major coverage questions should be expanded with insurance benefit vocabulary."""
-    expanded = expand_query("이 상품의 주요 보장 내용은 뭐야?")
+    expanded = build_expanded_query(
+        "이 상품의 주요 보장 내용은 뭐야?",
+        SEARCH_PROFILES["coverage_summary"],
+    )
 
     assert "보험금 지급사유" in expanded
-    assert "연금지급형태" in expanded
+    assert "지급금액" in expanded

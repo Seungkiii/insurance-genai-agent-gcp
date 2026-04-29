@@ -12,6 +12,8 @@ class DocumentRecord(BaseModel):
     file_name: str
     status: str
     gcs_uri: str
+    product_type: str | None = None
+    document_type: str | None = None
     created_at: str | None = None
     error_message: str | None = None
 
@@ -23,6 +25,8 @@ class DocumentUploadResponse(BaseModel):
     file_name: str
     status: str
     gcs_uri: str
+    product_type: str | None = None
+    document_type: str | None = None
 
 
 class DocumentListResponse(BaseModel):
@@ -45,3 +49,5 @@ class DocumentIndexResponse(BaseModel):
     gcs_uri: str
     status: str
     chunks: int
+    product_type: str | None = None
+    document_type: str | None = None

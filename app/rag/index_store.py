@@ -32,8 +32,11 @@ class IndexStore:
                 "document_id": chunk.document_id,
                 "chunk_id": chunk.chunk_id,
                 "document_name": chunk.document_name,
+                "document_type": chunk.document_type,
+                "product_type": chunk.product_type,
                 "page": chunk.page,
                 "section": chunk.section,
+                "normalized_section": chunk.normalized_section,
                 "content": chunk.content,
                 "embedding": embedding,
             }

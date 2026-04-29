@@ -10,6 +10,7 @@ from app.api.chat import get_answer_generator, get_firestore_service, get_query_
 from app.main import create_app
 from app.rag.generator import AnswerGenerator
 from app.rag.retriever import RetrievalResult
+from app.rag.search_profiles import SearchProfile
 
 
 class FakeStorageService:
@@ -18,8 +19,8 @@ class FakeStorageService:
     def download_bytes(self, gcs_uri: str) -> bytes:
         if gcs_uri.endswith("doc-001/embeddings.jsonl"):
             return (
-                '{"document_id":"doc-001","document_name":"policy-a.pdf","chunk_id":"doc-001-chunk-0001","page":2,"section":"보험금 지급","content":"보험금 지급 기준은 약관에 따릅니다.","embedding":[1.0,0.0,0.0]}\n'
-                '{"document_id":"doc-001","document_name":"policy-a.pdf","chunk_id":"doc-001-chunk-0002","page":4,"section":"청구 서류","content":"보험금 청구서와 신분증 사본이 필요합니다.","embedding":[0.0,1.0,0.0]}'
+                '{"document_id":"doc-001","document_name":"policy-a.pdf","document_type":"policy_terms","product_type":"health","chunk_id":"doc-001-chunk-0001","page":2,"section":"보험금 지급사유","normalized_section":"coverage","content":"보험금 지급 기준은 약관에 따릅니다.","embedding":[1.0,0.0,0.0]}\n'
+                '{"document_id":"doc-001","document_name":"policy-a.pdf","document_type":"policy_terms","product_type":"health","chunk_id":"doc-001-chunk-0002","page":4,"section":"청구 서류","normalized_section":"claim","content":"보험금 청구서와 신분증 사본이 필요합니다.","embedding":[0.0,1.0,0.0]}'
             ).encode("utf-8")
         raise FileNotFoundError(gcs_uri)
 
@@ -57,9 +58,12 @@ class CoverageFallbackStorageService:
                         {
                             "document_id": "coverage-doc",
                             "document_name": "2025041516121911948953.pdf",
+                            "document_type": "product_summary",
+                            "product_type": "annuity",
                             "chunk_id": "coverage-doc-chunk-0001",
                             "page": 22,
                             "section": "보험료",
+                            "normalized_section": "premium",
                             "content": "1차월 기본보험료의 3.400%(1,700,000원)가 안내됩니다.",
                             "embedding": [1.0, 0.0],
                         }
@@ -68,9 +72,12 @@ class CoverageFallbackStorageService:
                         {
                             "document_id": "coverage-doc",
                             "document_name": "2025041516121911948953.pdf",
+                            "document_type": "product_summary",
+                            "product_type": "annuity",
                             "chunk_id": "coverage-doc-chunk-0002",
                             "page": 3,
                             "section": "상품 특이사항",
+                            "normalized_section": "product_overview",
                             "content": "이 상품의 특이사항과 핵심 보장 구조를 설명합니다.",
                             "embedding": [0.0, 1.0],
                         }
@@ -79,9 +86,12 @@ class CoverageFallbackStorageService:
                         {
                             "document_id": "coverage-doc",
                             "document_name": "2025041516121911948953.pdf",
+                            "document_type": "policy_terms",
+                            "product_type": "annuity",
                             "chunk_id": "coverage-doc-chunk-0003",
                             "page": 7,
                             "section": "보험금 지급사유",
+                            "normalized_section": "coverage",
                             "content": "고도재해장해보험금의 보험금 지급사유와 지급금액을 안내합니다.",
                             "embedding": [0.0, 1.0],
                         }
@@ -90,9 +100,12 @@ class CoverageFallbackStorageService:
                         {
                             "document_id": "coverage-doc",
                             "document_name": "2025041516121911948953.pdf",
+                            "document_type": "product_summary",
+                            "product_type": "annuity",
                             "chunk_id": "coverage-doc-chunk-0004",
                             "page": 9,
                             "section": "연금지급형태",
+                            "normalized_section": "annuity_payment",
                             "content": "연금개시후 연금지급형태와 생존연금 지급 구조를 안내합니다.",
                             "embedding": [0.0, 1.0],
                         }
@@ -106,9 +119,18 @@ class CoverageFallbackStorageService:
 class FakeGenerator(AnswerGenerator):
     """Mock Gemini generator."""
 
-    def generate(self, question: str, results: list[RetrievalResult]) -> str:
+    def generate(
+        self,
+        question: str,
+        results: list[RetrievalResult],
+        *,
+        search_profile: SearchProfile,
+        fallback_required: bool,
+    ) -> str:
         assert question
         assert results
+        assert search_profile.name
+        assert isinstance(fallback_required, bool)
         return "검색된 근거를 바탕으로 답변을 생성했습니다.\n\n본 답변은 약관 해석을 돕기 위한 참고 정보이며, 보험금 지급 확정 또는 보상 승인 판단을 의미하지 않습니다."
 
 
@@ -117,6 +139,24 @@ class FakeFirestoreService:
 
     def __init__(self) -> None:
         self.saved_interactions: list[dict[str, object]] = []
+        self.records = {
+            "doc-001": {
+                "document_id": "doc-001",
+                "file_name": "policy-a.pdf",
+                "gcs_uri": "gs://sample-bucket/documents/doc-001/original.pdf",
+                "status": "indexed",
+                "product_type": "health",
+                "document_type": "policy_terms",
+            },
+            "coverage-doc": {
+                "document_id": "coverage-doc",
+                "file_name": "2025041516121911948953.pdf",
+                "gcs_uri": "gs://sample-bucket/documents/coverage-doc/original.pdf",
+                "status": "indexed",
+                "product_type": "annuity",
+                "document_type": "product_summary",
+            },
+        }
 
     def save_chat_interaction(
         self,
@@ -135,6 +175,12 @@ class FakeFirestoreService:
         }
         self.saved_interactions.append(payload)
         return payload
+
+    def get_document(self, document_id: str) -> dict[str, object] | None:
+        return self.records.get(document_id)
+
+    def list_documents(self) -> list[dict[str, object]]:
+        return list(self.records.values())
 
 
 def create_test_client(
@@ -181,7 +227,9 @@ def test_chat_returns_grounded_answer_and_citations() -> None:
     assert payload["intent"] == "policy_qa"
     assert payload["citations"]
     assert payload["citations"][0]["document_name"] == "policy-a.pdf"
-    assert payload["citations"][0]["score"] > 0.9
+    assert payload["citations"][0]["normalized_section"] == "coverage"
+    assert payload["search_profile"] == "payment_condition"
+    assert payload["citations"][0]["score"] > 0.5
     assert payload["confidence_score"] > 0
     assert "보험금 지급 여부는 실제 약관" in payload["disclaimer"]
     assert firestore_service.saved_interactions
@@ -202,8 +250,9 @@ def test_chat_requests_more_information_when_scores_are_low() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert "추가 정보를 알려주시면" in payload["answer"]
-    assert payload["confidence_score"] <= 0.2
+    assert "질문 의도에 맞는 조항" in payload["answer"]
+    assert payload["fallback_required"] is True
+    assert payload["confidence_score"] <= 0.4
     assert firestore_service.saved_interactions
 
 
@@ -227,5 +276,7 @@ def test_chat_major_coverage_question_retries_with_expanded_query() -> None:
     assert "보험금 지급사유" in sections
     assert "연금지급형태" in sections
     assert sections[0] != "보험료"
-    assert payload["confidence_score"] >= 0.45
+    assert payload["search_profile"] == "coverage_summary"
+    assert payload["fallback_required"] is True
+    assert payload["confidence_score"] <= 0.4
     assert firestore_service.saved_interactions

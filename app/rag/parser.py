@@ -7,33 +7,39 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from app.rag.metadata import classify_document_type, classify_product_type, normalize_section
+
 SKIPPED_SECTION_HEADINGS = {"Document Notice", "Product Overview", "Example Test Queries"}
-SECTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+SECTION_HEADING_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^상품의?특이사항$"), "상품 특이사항"),
-    (re.compile(r"^보장하는손해$"), "보장하는 손해"),
+    (re.compile(r"^상품개요$"), "상품 개요"),
+    (re.compile(r"^주요특징$"), "주요 특징"),
+    (re.compile(r"^가입나이$"), "가입나이"),
+    (re.compile(r"^가입조건$"), "가입조건"),
+    (re.compile(r"^보험기간$"), "보험기간"),
+    (re.compile(r"^납입기간$"), "납입기간"),
+    (re.compile(r"^보험금지급사유및지급제한사항$"), "보험금지급사유 및 지급제한사항"),
     (re.compile(r"^보험금지급사유$"), "보험금 지급사유"),
     (re.compile(r"^보험금지급$"), "보험금 지급사유"),
     (re.compile(r"^보험급부$"), "보험급부"),
     (re.compile(r"^지급금액$"), "지급금액"),
-    (re.compile(r"^고도재해장해보험금$"), "고도재해장해보험금"),
-    (re.compile(r"^생존연금$"), "생존연금"),
-    (re.compile(r"^연금지급형태$"), "연금지급형태"),
-    (re.compile(r"^연금개시전$"), "연금개시전"),
-    (re.compile(r"^연금개시후$"), "연금개시후"),
-    (re.compile(r"^주요보장내용$"), "보장"),
-    (re.compile(r"^보장내용$"), "보장"),
+    (re.compile(r"^보장내용$"), "보장내용"),
     (re.compile(r"^보장$"), "보장"),
     (re.compile(r"^지급하지않는사유$"), "지급하지 않는 사유"),
-    (re.compile(r"^보장하지않는사유$"), "지급하지 않는 사유"),
-    (re.compile(r"^보장하지않는손해$"), "지급하지 않는 사유"),
-    (re.compile(r"^면책$"), "지급하지 않는 사유"),
-    (re.compile(r"^특약$"), "특약"),
-    (re.compile(r"^해약환급금$"), "해약환급금"),
-    (re.compile(r"^환급률$"), "환급률"),
+    (re.compile(r"^보장하지않는사유$"), "보장하지 않는 사유"),
+    (re.compile(r"^면책$"), "면책"),
+    (re.compile(r"^연금지급형태$"), "연금지급형태"),
+    (re.compile(r"^생존연금$"), "생존연금"),
+    (re.compile(r"^연금개시전$"), "연금개시전"),
+    (re.compile(r"^연금개시후$"), "연금개시후"),
+    (re.compile(r"^사망보험금$"), "사망보험금"),
     (re.compile(r"^보험료$"), "보험료"),
     (re.compile(r"^수수료$"), "수수료"),
+    (re.compile(r"^해약환급금$"), "해약환급금"),
+    (re.compile(r"^환급률$"), "환급률"),
     (re.compile(r"^청구서류$"), "청구 서류"),
     (re.compile(r"^청구$"), "청구 서류"),
+    (re.compile(r"^특약$"), "특약"),
 )
 
 
@@ -42,16 +48,19 @@ class ParsedSection:
     """A logical section extracted from a document."""
 
     heading: str
+    normalized_section: str
     content: str
     page: int
 
 
 @dataclass(frozen=True)
 class ParsedDocument:
-    """Parsed document with normalized sections."""
+    """Parsed document with normalized sections and document-level metadata."""
 
     document_id: str
     document_name: str
+    product_type: str
+    document_type: str
     sections: list[ParsedSection]
 
 
@@ -91,7 +100,13 @@ class MarkdownPolicyParser:
             current_lines.append(line)
 
         self._append_section(sections, current_heading, current_lines)
-        return ParsedDocument(document_id=document_id, document_name=path.name, sections=sections)
+        return ParsedDocument(
+            document_id=document_id,
+            document_name=path.name,
+            product_type=classify_product_type(raw_text[:4000], path.name),
+            document_type=classify_document_type(raw_text[:2000], path.name),
+            sections=sections,
+        )
 
     @staticmethod
     def _append_section(
@@ -107,7 +122,14 @@ class MarkdownPolicyParser:
         if not content or heading in SKIPPED_SECTION_HEADINGS:
             return
 
-        sections.append(ParsedSection(heading=heading, content=content, page=1))
+        sections.append(
+            ParsedSection(
+                heading=heading,
+                normalized_section=normalize_section(heading, content),
+                content=content,
+                page=1,
+            )
+        )
 
 
 class PDFDocumentParser:
@@ -127,9 +149,11 @@ class PDFDocumentParser:
         current_heading = "일반"
         current_page = 1
         current_lines: list[str] = []
+        full_text_parts: list[str] = []
 
         for page_index, page in enumerate(pdf, start=1):
             page_text = page.get_text("text")
+            full_text_parts.append(page_text)
             normalized_lines = [line.strip() for line in page_text.splitlines() if line.strip()]
 
             for line in normalized_lines:
@@ -145,7 +169,15 @@ class PDFDocumentParser:
 
         self._append_pdf_section(sections, current_heading, current_lines, current_page)
         pdf.close()
-        return ParsedDocument(document_id=document_id, document_name=path.name, sections=sections)
+
+        full_text = "\n".join(full_text_parts)
+        return ParsedDocument(
+            document_id=document_id,
+            document_name=path.name,
+            product_type=classify_product_type(full_text[:8000], path.name),
+            document_type=classify_document_type(full_text[:4000], path.name),
+            sections=sections,
+        )
 
     @staticmethod
     def _append_pdf_section(
@@ -162,8 +194,14 @@ class PDFDocumentParser:
         if not content:
             return
 
-        normalized_heading = classify_section(heading, content)
-        sections.append(ParsedSection(heading=normalized_heading, content=content, page=page))
+        sections.append(
+            ParsedSection(
+                heading=heading,
+                normalized_section=normalize_section(heading, content),
+                content=content,
+                page=page,
+            )
+        )
 
 
 def detect_section_heading(text: str) -> str | None:
@@ -175,60 +213,23 @@ def detect_section_heading(text: str) -> str | None:
 
     compact = re.sub(r"^[0-9]+\.*", "", compact)
     compact = re.sub(r"^[()\[\]{}\-_.]+|[()\[\]{}\-_.:]+$", "", compact)
-    for pattern, normalized_heading in SECTION_PATTERNS:
+    for pattern, normalized_heading in SECTION_HEADING_RULES:
         if pattern.fullmatch(compact):
             return normalized_heading
     return None
 
 
 def classify_section(heading: str, content: str) -> str:
-    """Refine generic headings into business-meaningful insurance sections."""
-    normalized_heading = heading.strip()
-    text = re.sub(r"\s+", "", f"{heading} {content}")
-
-    if "상품의특이사항" in text:
-        return "상품 특이사항"
-    if "보험금지급사유" in text or "지급사유" in text:
-        return "보험금 지급사유"
-    if "보험급부" in text:
-        return "보험급부"
-    if "지급금액" in text:
-        return "지급금액"
-    if "고도재해장해보험금" in text:
-        return "고도재해장해보험금"
-    if "생존연금" in text:
-        return "생존연금"
-    if "연금지급형태" in text:
-        return "연금지급형태"
-    if "연금개시전" in text:
-        return "연금개시전"
-    if "연금개시후" in text:
-        return "연금개시후"
-    if "해약환급금" in text:
-        return "해약환급금"
-    if "환급률" in text:
-        return "환급률"
-    if "수수료" in text or "계약관리비용" in text:
-        return "수수료"
-    if "보험료" in text:
-        return "보험료"
-    if (
-        "미래의수익을보장하는것은아닙니다" in text
-        or "미래수익을보장하지않습니다" in text
-        or "환급률" in text
-    ) and normalized_heading == "보장":
-        return "환급률"
-    return normalized_heading
+    """Return the normalized section class for compatibility with existing tests."""
+    return normalize_section(heading, content)
 
 
 def _looks_like_sentence(text: str) -> bool:
     """Filter out narrative lines that should not be treated as headings."""
     compact = re.sub(r"\s+", "", text)
-    sentence_endings = ("입니다", "합니다", "됩니다", "있습니다", "없습니다", "않습니다", "않는다", "됩니다.")
-    if len(compact) > 30:
-        return True
-    if any(compact.endswith(ending) for ending in sentence_endings):
+    if len(compact) > 35:
         return True
     if any(symbol in text for symbol in (".", "!", "?")):
         return True
-    return False
+    sentence_endings = ("입니다", "합니다", "됩니다", "있습니다", "없습니다", "않습니다", "않는다")
+    return any(compact.endswith(ending) for ending in sentence_endings)
