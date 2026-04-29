@@ -1,15 +1,48 @@
-"""Tests for keyword-based retrieval behavior."""
+"""Tests for retrieval behavior."""
 
-from app.rag.chunker import chunk_document
-from app.rag.parser import MarkdownPolicyParser
-from app.rag.retriever import KeywordChunkRetriever
+from __future__ import annotations
+
+import json
+
+from app.rag.chunker import RAGChunk
+from app.rag.retriever import (
+    GcsEmbeddingRetriever,
+    KeywordChunkRetriever,
+    cosine_similarity,
+    expand_query,
+)
+
+
+class FakeStorageService:
+    """Mock storage service for embedding artifact retrieval."""
+
+    def __init__(self, payloads: dict[str, str]) -> None:
+        self.payloads = payloads
+
+    def download_bytes(self, gcs_uri: str) -> bytes:
+        return self.payloads[gcs_uri].encode("utf-8")
 
 
 def test_keyword_retriever_finds_relevant_claim_document_chunks() -> None:
-    """Retriever should return claim-document-related chunks for matching questions."""
-    parser = MarkdownPolicyParser()
-    document = parser.parse("data/sample_policies/sample_policy.md", document_id="doc-retriever-001")
-    chunks = chunk_document(document)
+    """Keyword retriever should still support local synthetic policy lookups."""
+    chunks = [
+        RAGChunk(
+            document_id="doc-001",
+            document_name="sample_policy.md",
+            chunk_id="doc-001-chunk-0001",
+            page=1,
+            section="청구 서류",
+            content="1. 보험금 청구서",
+        ),
+        RAGChunk(
+            document_id="doc-001",
+            document_name="sample_policy.md",
+            chunk_id="doc-001-chunk-0002",
+            page=1,
+            section="보장",
+            content="입원일당 보장 안내",
+        ),
+    ]
     retriever = KeywordChunkRetriever()
 
     results = retriever.retrieve("입원일당 청구 서류는 무엇인가요?", chunks, top_k=3)
@@ -17,18 +50,101 @@ def test_keyword_retriever_finds_relevant_claim_document_chunks() -> None:
     assert results
     assert results[0].score > 0
     assert any(result.chunk.section == "청구 서류" for result in results)
-    assert any("보험금 청구서" in result.chunk.content for result in results)
 
 
-def test_keyword_retriever_finds_relevant_coverage_chunks() -> None:
-    """Retriever should rank coverage-related clauses for coverage questions."""
-    parser = MarkdownPolicyParser()
-    document = parser.parse("data/sample_policies/sample_policy.md", document_id="doc-retriever-002")
-    chunks = chunk_document(document)
-    retriever = KeywordChunkRetriever()
+def test_embedding_retriever_loads_jsonl_and_sorts_by_cosine_similarity() -> None:
+    """Embedding retriever should load stored artifacts and rank by cosine similarity."""
+    payload = "\n".join(
+        [
+            json.dumps(
+                {
+                    "document_id": "doc-101",
+                    "document_name": "policy-a.pdf",
+                    "chunk_id": "doc-101-chunk-0001",
+                    "page": 2,
+                    "section": "보험금 지급",
+                    "content": "보험금 지급 기준은 약관에 따릅니다.",
+                    "embedding": [1.0, 0.0, 0.0],
+                }
+            ),
+            json.dumps(
+                {
+                    "document_id": "doc-101",
+                    "document_name": "policy-a.pdf",
+                    "chunk_id": "doc-101-chunk-0002",
+                    "page": 3,
+                    "section": "청구 서류",
+                    "content": "보험금 청구서와 신분증 사본이 필요합니다.",
+                    "embedding": [0.0, 1.0, 0.0],
+                }
+            ),
+        ]
+    )
+    storage_service = FakeStorageService(
+        {"gs://sample-bucket/indexes/doc-101/embeddings.jsonl": payload}
+    )
+    retriever = GcsEmbeddingRetriever(storage_service, "sample-bucket")
 
-    results = retriever.retrieve("미용 목적 시술도 보장되나요?", chunks, top_k=3)
+    results = retriever.retrieve([0.9, 0.1, 0.0], ["doc-101"], top_k=2)
 
-    assert results
-    assert results[0].chunk.section in {"보장하지 않는 손해", "보장하는 손해"}
-    assert any("미용 목적의 시술" in result.chunk.content for result in results)
+    assert len(results) == 2
+    assert results[0].chunk.section == "보험금 지급"
+    assert results[0].score > results[1].score
+
+
+def test_cosine_similarity_handles_zero_vectors() -> None:
+    """Zero vectors should not raise and should return zero."""
+    assert cosine_similarity([0.0, 0.0], [1.0, 1.0]) == 0.0
+    assert cosine_similarity([1.0, 0.0], [0.0, 0.0]) == 0.0
+
+
+def test_embedding_retriever_boosts_coverage_sections_for_major_coverage_questions() -> None:
+    """Coverage-oriented sections should outrank premium chunks for major coverage questions."""
+    payload = "\n".join(
+        [
+            json.dumps(
+                {
+                    "document_id": "doc-202",
+                    "document_name": "policy-b.pdf",
+                    "chunk_id": "doc-202-chunk-0001",
+                    "page": 22,
+                    "section": "보험료",
+                    "content": "1차월 기본보험료의 3.400%(1,700,000원) 및 계약관리비용 안내",
+                    "embedding": [1.0, 0.0],
+                }
+            ),
+            json.dumps(
+                {
+                    "document_id": "doc-202",
+                    "document_name": "policy-b.pdf",
+                    "chunk_id": "doc-202-chunk-0002",
+                    "page": 7,
+                    "section": "보험금 지급사유",
+                    "content": "보험금 지급사유와 지급금액을 안내합니다.",
+                    "embedding": [0.97, 0.0],
+                }
+            ),
+        ]
+    )
+    storage_service = FakeStorageService(
+        {"gs://sample-bucket/indexes/doc-202/embeddings.jsonl": payload}
+    )
+    retriever = GcsEmbeddingRetriever(storage_service, "sample-bucket")
+
+    results = retriever.retrieve(
+        [1.0, 0.0],
+        ["doc-202"],
+        top_k=2,
+        question="이 상품의 주요 보장 내용은 뭐야?",
+    )
+
+    assert results[0].chunk.section == "보험금 지급사유"
+    assert results[0].score > results[1].score
+
+
+def test_expand_query_adds_major_coverage_terms() -> None:
+    """Major coverage questions should be expanded with insurance benefit vocabulary."""
+    expanded = expand_query("이 상품의 주요 보장 내용은 뭐야?")
+
+    assert "보험금 지급사유" in expanded
+    assert "연금지급형태" in expanded

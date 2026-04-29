@@ -45,13 +45,13 @@ def main() -> None:
     chunks = chunk_document(parsed_document)
     if (
         settings.vertex_ai_project_id
-        and settings.vertex_ai_location
+        and settings.effective_embedding_location
         and settings.embedding_model_name
     ):
         embedder = VertexAIEmbedder(
             VertexAIEmbeddingService(
                 project_id=settings.vertex_ai_project_id,
-                location=settings.vertex_ai_location,
+                location=settings.effective_embedding_location or "",
                 model_name=settings.embedding_model_name,
             )
         )

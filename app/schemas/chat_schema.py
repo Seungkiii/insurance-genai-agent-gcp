@@ -9,7 +9,9 @@ class ChatRequest(BaseModel):
     """Incoming chat request payload."""
 
     question: str = Field(..., min_length=1, validation_alias=AliasChoices("question", "query"))
-    session_id: str | None = None
+    session_id: str
+    document_ids: list[str] = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=20)
 
 
 class Citation(BaseModel):
@@ -18,7 +20,8 @@ class Citation(BaseModel):
     document_name: str
     page: int
     section: str
-    content: str
+    content_preview: str
+    score: float
 
 
 class RecommendedDesign(BaseModel):

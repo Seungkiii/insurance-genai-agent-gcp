@@ -34,6 +34,16 @@ class FirestoreService(Protocol):
     ) -> dict[str, Any] | None:
         """Update document status and optional metadata."""
 
+    def save_chat_interaction(
+        self,
+        session_id: str,
+        user_message: str,
+        assistant_answer: str,
+        citations: list[dict[str, Any]],
+        latency_ms: int,
+    ) -> dict[str, Any]:
+        """Persist a chat interaction for audit and session review."""
+
 
 class GCPFirestoreService:
     """Firestore-backed implementation for document metadata storage."""
@@ -46,6 +56,7 @@ class GCPFirestoreService:
     ) -> None:
         self.database = database
         self.collection_name = collection_name
+        self.chat_collection_name = "chat_sessions"
         self._client = client
 
     def create_document(
@@ -103,6 +114,27 @@ class GCPFirestoreService:
         document_ref.update(payload)
         updated = document_ref.get()
         return updated.to_dict()
+
+    def save_chat_interaction(
+        self,
+        session_id: str,
+        user_message: str,
+        assistant_answer: str,
+        citations: list[dict[str, Any]],
+        latency_ms: int,
+    ) -> dict[str, Any]:
+        """Persist a chat interaction under a session-scoped collection."""
+        client = self._client or self._create_client()
+        payload = {
+            "session_id": session_id,
+            "user_message": user_message,
+            "assistant_answer": assistant_answer,
+            "citations": citations,
+            "latency_ms": latency_ms,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        client.collection(self.chat_collection_name).document().set(payload)
+        return payload
 
     def _create_client(self) -> object:
         """Create a Google Cloud Firestore client lazily."""

@@ -50,12 +50,12 @@ def get_embedder(settings: Settings = Depends(get_settings)) -> Embedder:
     """Return the embedding implementation."""
     if (
         settings.vertex_ai_project_id
-        and settings.vertex_ai_location
+        and settings.effective_embedding_location
         and settings.embedding_model_name
     ):
         service = VertexAIEmbeddingService(
             project_id=settings.vertex_ai_project_id,
-            location=settings.vertex_ai_location,
+            location=settings.effective_embedding_location or "",
             model_name=settings.embedding_model_name,
         )
         return VertexAIEmbedder(service)

@@ -7,9 +7,8 @@ from pathlib import Path
 
 from app.agents.state import AgentState, CitationState
 from app.rag.chunker import RAGChunk, chunk_document
-from app.rag.citation import build_citations
 from app.rag.parser import MarkdownPolicyParser
-from app.rag.retriever import KeywordChunkRetriever
+from app.rag.retriever import KeywordChunkRetriever, RetrievalResult
 
 POLICY_PATH = Path("data/sample_policies/sample_policy.md")
 
@@ -27,15 +26,7 @@ def run_retrieval_node(state: AgentState) -> AgentState:
     query = state.get("user_query", "")
     retriever = KeywordChunkRetriever()
     results = retriever.retrieve(query, get_policy_chunks(), top_k=3)
-    citations = [
-        CitationState(
-            document_name=citation.document_name,
-            section=citation.section,
-            page=citation.page,
-            content=citation.content,
-        )
-        for citation in build_citations(results)
-    ]
+    citations = _build_agent_citations(results)
 
     updated = dict(state)
     updated["retrieved_docs"] = citations
@@ -44,6 +35,33 @@ def run_retrieval_node(state: AgentState) -> AgentState:
     updated["fallback_reason"] = None if citations else "No relevant synthetic policy clauses were retrieved."
     updated["next_action"] = "respond_policy"
     return updated
+
+
+def _build_agent_citations(results: list[RetrievalResult]) -> list[CitationState]:
+    """Build workflow citations that keep full chunk content for agent responses."""
+    citations: list[CitationState] = []
+    seen: set[tuple[str, str, int, str]] = set()
+
+    for result in results:
+        key = (
+            result.chunk.document_name,
+            result.chunk.section,
+            result.chunk.page,
+            result.chunk.content,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        citations.append(
+            CitationState(
+                document_name=result.chunk.document_name,
+                section=result.chunk.section,
+                page=result.chunk.page,
+                content=result.chunk.content,
+            )
+        )
+
+    return citations
 
 
 def _compute_confidence_score(results: list[object]) -> float:

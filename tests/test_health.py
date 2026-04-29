@@ -35,6 +35,8 @@ def test_ready_endpoints_return_missing_settings_when_not_configured(monkeypatch
     for key in (
         "VERTEX_AI_PROJECT_ID",
         "VERTEX_AI_LOCATION",
+        "VERTEX_AI_EMBEDDING_LOCATION",
+        "VERTEX_AI_GENERATION_LOCATION",
         "FIRESTORE_DATABASE",
         "GCS_BUCKET_NAME",
         "GEMINI_MODEL_NAME",
@@ -47,7 +49,8 @@ def test_ready_endpoints_return_missing_settings_when_not_configured(monkeypatch
 
     expected_missing = [
         "VERTEX_AI_PROJECT_ID",
-        "VERTEX_AI_LOCATION",
+        "VERTEX_AI_EMBEDDING_LOCATION",
+        "VERTEX_AI_GENERATION_LOCATION",
         "FIRESTORE_DATABASE",
         "GCS_BUCKET_NAME",
         "GEMINI_MODEL_NAME",
@@ -73,7 +76,8 @@ def test_ready_endpoints_return_ready_when_required_settings_exist(monkeypatch) 
     monkeypatch.setenv("APP_VERSION", "0.1.0-test")
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("VERTEX_AI_PROJECT_ID", "sample-project")
-    monkeypatch.setenv("VERTEX_AI_LOCATION", "asia-northeast3")
+    monkeypatch.setenv("VERTEX_AI_EMBEDDING_LOCATION", "asia-northeast3")
+    monkeypatch.setenv("VERTEX_AI_GENERATION_LOCATION", "global")
     monkeypatch.setenv("FIRESTORE_DATABASE", "sample-database")
     monkeypatch.setenv("GCS_BUCKET_NAME", "sample-bucket")
     monkeypatch.setenv("GEMINI_MODEL_NAME", "gemini-sample")
