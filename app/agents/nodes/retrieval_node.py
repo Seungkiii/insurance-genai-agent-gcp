@@ -18,7 +18,7 @@ POLICY_PATH = Path("data/sample_policies/sample_policy.md")
 def get_policy_chunks() -> list[RAGChunk]:
     """Load and cache synthetic policy chunks."""
     parser = MarkdownPolicyParser()
-    parsed_document = parser.parse(str(POLICY_PATH))
+    parsed_document = parser.parse(str(POLICY_PATH), document_id="sample-policy")
     return chunk_document(parsed_document)
 
 

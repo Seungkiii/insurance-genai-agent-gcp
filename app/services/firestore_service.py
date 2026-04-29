@@ -24,6 +24,16 @@ class FirestoreService(Protocol):
     def get_document(self, document_id: str) -> dict[str, Any] | None:
         """Return a document metadata record by id."""
 
+    def update_document_status(
+        self,
+        document_id: str,
+        status: str,
+        *,
+        error_message: str | None = None,
+        **extra_fields: Any,
+    ) -> dict[str, Any] | None:
+        """Update document status and optional metadata."""
+
 
 class GCPFirestoreService:
     """Firestore-backed implementation for document metadata storage."""
@@ -70,6 +80,29 @@ class GCPFirestoreService:
         if not snapshot.exists:
             return None
         return snapshot.to_dict()
+
+    def update_document_status(
+        self,
+        document_id: str,
+        status: str,
+        *,
+        error_message: str | None = None,
+        **extra_fields: Any,
+    ) -> dict[str, Any] | None:
+        """Update document status and return the latest record."""
+        client = self._client or self._create_client()
+        document_ref = client.collection(self.collection_name).document(document_id)
+        snapshot = document_ref.get()
+        if not snapshot.exists:
+            return None
+
+        payload: dict[str, Any] = {"status": status}
+        if error_message is not None:
+            payload["error_message"] = error_message
+        payload.update(extra_fields)
+        document_ref.update(payload)
+        updated = document_ref.get()
+        return updated.to_dict()
 
     def _create_client(self) -> object:
         """Create a Google Cloud Firestore client lazily."""

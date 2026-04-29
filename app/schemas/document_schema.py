@@ -13,6 +13,7 @@ class DocumentRecord(BaseModel):
     status: str
     gcs_uri: str
     created_at: str | None = None
+    error_message: str | None = None
 
 
 class DocumentUploadResponse(BaseModel):
@@ -40,5 +41,7 @@ class DocumentIndexResponse(BaseModel):
     """Document index response."""
 
     document_id: str
+    file_name: str
+    gcs_uri: str
     status: str
     chunks: int

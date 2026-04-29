@@ -8,7 +8,7 @@ from app.rag.retriever import KeywordChunkRetriever
 def test_keyword_retriever_finds_relevant_claim_document_chunks() -> None:
     """Retriever should return claim-document-related chunks for matching questions."""
     parser = MarkdownPolicyParser()
-    document = parser.parse("data/sample_policies/sample_policy.md")
+    document = parser.parse("data/sample_policies/sample_policy.md", document_id="doc-retriever-001")
     chunks = chunk_document(document)
     retriever = KeywordChunkRetriever()
 
@@ -23,7 +23,7 @@ def test_keyword_retriever_finds_relevant_claim_document_chunks() -> None:
 def test_keyword_retriever_finds_relevant_coverage_chunks() -> None:
     """Retriever should rank coverage-related clauses for coverage questions."""
     parser = MarkdownPolicyParser()
-    document = parser.parse("data/sample_policies/sample_policy.md")
+    document = parser.parse("data/sample_policies/sample_policy.md", document_id="doc-retriever-002")
     chunks = chunk_document(document)
     retriever = KeywordChunkRetriever()
 
