@@ -5,15 +5,18 @@ from __future__ import annotations
 import os
 import platform
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-from app.api import admin, chat, documents, feedback, health, sessions
+from app.api import admin, chat, demo, documents, feedback, health, sessions
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 
 
 logger = get_logger("app.main")
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 @asynccontextmanager
@@ -63,6 +66,8 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
     app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])
     app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
+    app.include_router(demo.router)
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     return app
 
