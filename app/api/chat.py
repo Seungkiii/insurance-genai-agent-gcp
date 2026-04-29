@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections import Counter
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -99,24 +100,36 @@ def chat(
     product_types = [record.get("product_type", "unknown") for record in target_documents]
     search_profile = classify_search_profile(request.question)
     expanded_query = build_expanded_query(request.question, search_profile, product_types=product_types)
-    tool_trace = [
-        f"profile={search_profile.name}",
-        f"expanded_query={expanded_query}",
-        f"document_count={len(target_documents)}",
-    ]
+    tool_trace: list[dict[str, object]] = []
 
     retriever = GcsEmbeddingRetriever(storage_service, settings.gcs_bucket_name or "")
-    query_embedding = embedder.embed_texts([expanded_query])[0]
-    results = retriever.retrieve(
-        query_embedding,
-        [record["document_id"] for record in target_documents],
-        top_k=request.top_k,
+    results, initial_latency_ms = _run_policy_search_step(
+        retriever=retriever,
+        embedder=embedder,
+        query=expanded_query,
         question=request.question,
+        document_ids=[record["document_id"] for record in target_documents],
         search_profile=search_profile,
+        top_k=request.top_k,
         top_k_per_document=request.top_k_per_document,
     )
-
     fallback_required = _requires_fallback(results, search_profile)
+    tool_trace.append(
+        _build_trace_item(
+            step=1,
+            tool_name="policy_search_tool",
+            status="success",
+            latency_ms=initial_latency_ms,
+            input_summary={
+                "query": request.question,
+                "search_profile": search_profile.name,
+                "document_count": len(target_documents),
+                "top_k": request.top_k,
+            },
+            output_summary=_build_trace_output_summary(results, fallback_required),
+        )
+    )
+
     if fallback_required and search_profile.expansion_terms:
         fallback_query = build_expanded_query(
             request.question,
@@ -125,18 +138,33 @@ def chat(
             max_terms=10,
             include_product_context=True,
         )
-        fallback_embedding = embedder.embed_texts([fallback_query])[0]
-        fallback_results = retriever.retrieve(
-            fallback_embedding,
-            [record["document_id"] for record in target_documents],
-            top_k=request.top_k,
+        fallback_results, fallback_latency_ms = _run_policy_search_step(
+            retriever=retriever,
+            embedder=embedder,
+            query=fallback_query,
             question=fallback_query,
+            document_ids=[record["document_id"] for record in target_documents],
             search_profile=search_profile,
+            top_k=request.top_k,
             top_k_per_document=request.top_k_per_document,
         )
         if fallback_results:
             results = fallback_results
-            tool_trace.append("fallback_retrieval=true")
+        tool_trace.append(
+            _build_trace_item(
+                step=2,
+                tool_name="policy_search_tool",
+                status="success",
+                latency_ms=fallback_latency_ms,
+                input_summary={
+                    "query": request.question,
+                    "search_profile": search_profile.name,
+                    "document_count": len(target_documents),
+                    "top_k": request.top_k,
+                },
+                output_summary=_build_trace_output_summary(results, True),
+            )
+        )
 
     citations = build_citations(results)
     provisional_answer = None
@@ -228,3 +256,62 @@ def _requires_fallback(results: list[RetrievalResult], search_profile: SearchPro
         1 for result in results[:5] if result.chunk.normalized_section in search_profile.negative_sections
     )
     return positive_matches == 0 or negative_matches > positive_matches
+
+
+def _run_policy_search_step(
+    *,
+    retriever: GcsEmbeddingRetriever,
+    embedder: Embedder,
+    query: str,
+    question: str,
+    document_ids: list[str],
+    search_profile: SearchProfile,
+    top_k: int,
+    top_k_per_document: int,
+) -> tuple[list[RetrievalResult], int]:
+    """Execute one retrieval step and return results with latency."""
+    started_at = time.perf_counter()
+    query_embedding = embedder.embed_texts([query])[0]
+    results = retriever.retrieve(
+        query_embedding,
+        document_ids,
+        top_k=top_k,
+        question=question,
+        search_profile=search_profile,
+        top_k_per_document=top_k_per_document,
+    )
+    latency_ms = int((time.perf_counter() - started_at) * 1000)
+    return results, latency_ms
+
+
+def _build_trace_item(
+    *,
+    step: int,
+    tool_name: str,
+    status: str,
+    latency_ms: int,
+    input_summary: dict[str, object],
+    output_summary: dict[str, object] | None,
+    error: str | None = None,
+) -> dict[str, object]:
+    """Build a structured trace item."""
+    return {
+        "step": step,
+        "tool_name": tool_name,
+        "status": status,
+        "latency_ms": latency_ms,
+        "input_summary": input_summary,
+        "output_summary": output_summary,
+        "error": error,
+    }
+
+
+def _build_trace_output_summary(results: list[RetrievalResult], fallback_required: bool) -> dict[str, object]:
+    """Summarize retrieval output for the API trace."""
+    return {
+        "citation_count": len(results[:5]),
+        "fallback_required": fallback_required,
+        "product_types": sorted({result.chunk.product_type for result in results}),
+        "document_types": sorted({result.chunk.document_type for result in results}),
+        "top_sections": [section for section, _ in Counter(result.chunk.normalized_section for result in results[:5]).most_common(3)],
+    }

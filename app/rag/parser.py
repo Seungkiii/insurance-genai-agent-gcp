@@ -7,13 +7,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from app.rag.metadata import classify_document_type, classify_product_type, normalize_section
+from app.rag.metadata import (
+    classify_document_type,
+    classify_product_type,
+    normalize_section,
+    section_label_from_normalized,
+)
 
 SKIPPED_SECTION_HEADINGS = {"Document Notice", "Product Overview", "Example Test Queries"}
 SECTION_HEADING_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^상품의?특이사항$"), "상품 특이사항"),
     (re.compile(r"^상품개요$"), "상품 개요"),
     (re.compile(r"^주요특징$"), "주요 특징"),
+    (re.compile(r"^보험가입자격요건$"), "보험가입 자격요건"),
     (re.compile(r"^가입나이$"), "가입나이"),
     (re.compile(r"^가입조건$"), "가입조건"),
     (re.compile(r"^보험기간$"), "보험기간"),
@@ -21,6 +27,8 @@ SECTION_HEADING_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^보험금지급사유및지급제한사항$"), "보험금지급사유 및 지급제한사항"),
     (re.compile(r"^보험금지급사유$"), "보험금 지급사유"),
     (re.compile(r"^보험금지급$"), "보험금 지급사유"),
+    (re.compile(r"^보험금지급제한사항$"), "보험금 지급제한사항"),
+    (re.compile(r"^지급제한사항$"), "지급제한사항"),
     (re.compile(r"^보험급부$"), "보험급부"),
     (re.compile(r"^지급금액$"), "지급금액"),
     (re.compile(r"^보장내용$"), "보장내용"),
@@ -30,11 +38,18 @@ SECTION_HEADING_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^면책$"), "면책"),
     (re.compile(r"^연금지급형태$"), "연금지급형태"),
     (re.compile(r"^생존연금$"), "생존연금"),
+    (re.compile(r"^연금개시후보험기간$"), "연금개시후 보험기간"),
+    (re.compile(r"^행복설계자금$"), "행복설계자금"),
     (re.compile(r"^연금개시전$"), "연금개시전"),
     (re.compile(r"^연금개시후$"), "연금개시후"),
     (re.compile(r"^사망보험금$"), "사망보험금"),
     (re.compile(r"^보험료$"), "보험료"),
+    (re.compile(r"^보험료산출기초$"), "보험료 산출기초"),
+    (re.compile(r"^적용이율$"), "적용이율"),
+    (re.compile(r"^위험률$"), "위험률"),
+    (re.compile(r"^적립이율$"), "적립이율"),
     (re.compile(r"^수수료$"), "수수료"),
+    (re.compile(r"^공제금액$"), "공제금액"),
     (re.compile(r"^해약환급금$"), "해약환급금"),
     (re.compile(r"^환급률$"), "환급률"),
     (re.compile(r"^청구서류$"), "청구 서류"),
@@ -51,6 +66,7 @@ class ParsedSection:
     normalized_section: str
     content: str
     page: int
+    end_page: int
 
 
 @dataclass(frozen=True)
@@ -128,6 +144,7 @@ class MarkdownPolicyParser:
                 normalized_section=normalize_section(heading, content),
                 content=content,
                 page=1,
+                end_page=1,
             )
         )
 
@@ -152,6 +169,10 @@ class PDFDocumentParser:
         full_text_parts: list[str] = []
 
         for page_index, page in enumerate(pdf, start=1):
+            self._append_pdf_section(sections, current_heading, current_lines, current_page, current_page)
+            current_heading = "일반"
+            current_page = page_index
+            current_lines = []
             page_text = page.get_text("text")
             full_text_parts.append(page_text)
             normalized_lines = [line.strip() for line in page_text.splitlines() if line.strip()]
@@ -159,7 +180,7 @@ class PDFDocumentParser:
             for line in normalized_lines:
                 detected_heading = detect_section_heading(line)
                 if detected_heading:
-                    self._append_pdf_section(sections, current_heading, current_lines, current_page)
+                    self._append_pdf_section(sections, current_heading, current_lines, current_page, page_index)
                     current_heading = detected_heading
                     current_page = page_index
                     current_lines = [line]
@@ -167,7 +188,7 @@ class PDFDocumentParser:
 
                 current_lines.append(line)
 
-        self._append_pdf_section(sections, current_heading, current_lines, current_page)
+        self._append_pdf_section(sections, current_heading, current_lines, current_page, current_page)
         pdf.close()
 
         full_text = "\n".join(full_text_parts)
@@ -185,6 +206,7 @@ class PDFDocumentParser:
         heading: str,
         lines: list[str],
         page: int,
+        end_page: int,
     ) -> None:
         """Store parsed PDF section content."""
         if not lines:
@@ -194,12 +216,18 @@ class PDFDocumentParser:
         if not content:
             return
 
+        normalized_section = normalize_section(heading, content)
+        resolved_heading = heading
+        if heading == "일반":
+            resolved_heading = section_label_from_normalized(normalized_section)
+
         sections.append(
             ParsedSection(
-                heading=heading,
-                normalized_section=normalize_section(heading, content),
+                heading=resolved_heading,
+                normalized_section=normalized_section,
                 content=content,
                 page=page,
+                end_page=end_page,
             )
         )
 

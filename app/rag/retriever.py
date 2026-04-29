@@ -161,6 +161,7 @@ class GcsEmbeddingRetriever:
                     product_type=record.get("product_type", "unknown"),
                     chunk_id=record["chunk_id"],
                     page=int(record["page"]),
+                    end_page=int(record.get("end_page", record["page"])),
                     section=record["section"],
                     normalized_section=record.get("normalized_section", "miscellaneous"),
                     content=record["content"],
@@ -183,7 +184,12 @@ class GcsEmbeddingRetriever:
                 )
 
         candidates.sort(key=lambda item: item.hybrid_score or item.score, reverse=True)
-        return _select_diverse_results(candidates, top_k=top_k, top_k_per_document=top_k_per_document)
+        return _select_diverse_results(
+            candidates,
+            top_k=top_k,
+            top_k_per_document=top_k_per_document,
+            search_profile=search_profile,
+        )
 
 
 def compute_hybrid_score(
@@ -320,6 +326,11 @@ def _compute_exact_keyword_boost(query_tokens: set[str], chunk: RAGChunk) -> flo
             boost += 0.03
         elif token in normalized_content:
             boost += 0.015
+    if chunk.normalized_section == "coverage" and any(
+        term in normalized_content
+        for term in ("급부명", "지급사유", "지급금액", "고도재해장해보험금", "장해지급률", "1,000만원", "1000만원")
+    ):
+        boost += 0.08
     return min(boost, 0.16)
 
 
@@ -328,6 +339,7 @@ def _select_diverse_results(
     *,
     top_k: int,
     top_k_per_document: int,
+    search_profile: SearchProfile | None = None,
 ) -> list[RetrievalResult]:
     """Greedily select high-scoring yet diverse results across documents and sections."""
     selected: list[RetrievalResult] = []
@@ -335,18 +347,47 @@ def _select_diverse_results(
     seen_page_keys: set[tuple[str, int]] = set()
     seen_section_keys: set[tuple[str, str]] = set()
 
+    if search_profile and search_profile.name == "coverage_summary":
+        for normalized_section in ("product_overview", "coverage", "annuity_payment"):
+            if len(selected) >= top_k:
+                break
+            candidate = next(
+                (
+                    result
+                    for result in results
+                    if result.chunk.normalized_section == normalized_section
+                    and per_document_counts.get(result.chunk.document_id, 0) < top_k_per_document
+                ),
+                None,
+            )
+            if candidate is None:
+                continue
+            selected.append(candidate)
+            per_document_counts[candidate.chunk.document_id] = per_document_counts.get(candidate.chunk.document_id, 0) + 1
+            seen_page_keys.add((candidate.chunk.document_id, candidate.chunk.page))
+            seen_section_keys.add((candidate.chunk.document_id, candidate.chunk.normalized_section))
+
     for result in results:
         if len(selected) >= top_k:
             break
+        if any(existing.chunk.chunk_id == result.chunk.chunk_id for existing in selected):
+            continue
         document_count = per_document_counts.get(result.chunk.document_id, 0)
         if document_count >= top_k_per_document:
             continue
 
         penalty = 0.0
         if (result.chunk.document_id, result.chunk.page) in seen_page_keys:
-            penalty += 0.05
+            penalty += 0.08
         if (result.chunk.document_id, result.chunk.normalized_section) in seen_section_keys:
-            penalty += 0.07
+            penalty += 0.1
+        if (
+            search_profile
+            and search_profile.name == "coverage_summary"
+            and result.chunk.normalized_section == "exclusions"
+            and not any(existing.chunk.normalized_section == "coverage" for existing in selected)
+        ):
+            penalty += 0.2
 
         adjusted_hybrid = (result.hybrid_score or result.score) - penalty
         if adjusted_hybrid <= 0:

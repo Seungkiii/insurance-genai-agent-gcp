@@ -19,8 +19,8 @@ class FakeStorageService:
     def download_bytes(self, gcs_uri: str) -> bytes:
         if gcs_uri.endswith("doc-001/embeddings.jsonl"):
             return (
-                '{"document_id":"doc-001","document_name":"policy-a.pdf","document_type":"policy_terms","product_type":"health","chunk_id":"doc-001-chunk-0001","page":2,"section":"보험금 지급사유","normalized_section":"coverage","content":"보험금 지급 기준은 약관에 따릅니다.","embedding":[1.0,0.0,0.0]}\n'
-                '{"document_id":"doc-001","document_name":"policy-a.pdf","document_type":"policy_terms","product_type":"health","chunk_id":"doc-001-chunk-0002","page":4,"section":"청구 서류","normalized_section":"claim","content":"보험금 청구서와 신분증 사본이 필요합니다.","embedding":[0.0,1.0,0.0]}'
+                '{"document_id":"doc-001","document_name":"policy-a.pdf","document_type":"policy_terms","product_type":"health","chunk_id":"doc-001-chunk-0001","page":2,"end_page":2,"section":"보험금 지급사유","normalized_section":"coverage","content":"보험금 지급 기준은 약관에 따릅니다.","embedding":[1.0,0.0,0.0]}\n'
+                '{"document_id":"doc-001","document_name":"policy-a.pdf","document_type":"policy_terms","product_type":"health","chunk_id":"doc-001-chunk-0002","page":4,"end_page":4,"section":"청구 서류","normalized_section":"claim","content":"보험금 청구서와 신분증 사본이 필요합니다.","embedding":[0.0,1.0,0.0]}'
             ).encode("utf-8")
         raise FileNotFoundError(gcs_uri)
 
@@ -62,6 +62,7 @@ class CoverageFallbackStorageService:
                             "product_type": "annuity",
                             "chunk_id": "coverage-doc-chunk-0001",
                             "page": 22,
+                            "end_page": 22,
                             "section": "보험료",
                             "normalized_section": "premium",
                             "content": "1차월 기본보험료의 3.400%(1,700,000원)가 안내됩니다.",
@@ -76,6 +77,7 @@ class CoverageFallbackStorageService:
                             "product_type": "annuity",
                             "chunk_id": "coverage-doc-chunk-0002",
                             "page": 3,
+                            "end_page": 3,
                             "section": "상품 특이사항",
                             "normalized_section": "product_overview",
                             "content": "이 상품의 특이사항과 핵심 보장 구조를 설명합니다.",
@@ -90,6 +92,7 @@ class CoverageFallbackStorageService:
                             "product_type": "annuity",
                             "chunk_id": "coverage-doc-chunk-0003",
                             "page": 7,
+                            "end_page": 7,
                             "section": "보험금 지급사유",
                             "normalized_section": "coverage",
                             "content": "고도재해장해보험금의 보험금 지급사유와 지급금액을 안내합니다.",
@@ -104,6 +107,7 @@ class CoverageFallbackStorageService:
                             "product_type": "annuity",
                             "chunk_id": "coverage-doc-chunk-0004",
                             "page": 9,
+                            "end_page": 9,
                             "section": "연금지급형태",
                             "normalized_section": "annuity_payment",
                             "content": "연금개시후 연금지급형태와 생존연금 지급 구조를 안내합니다.",
@@ -228,9 +232,13 @@ def test_chat_returns_grounded_answer_and_citations() -> None:
     assert payload["citations"]
     assert payload["citations"][0]["document_name"] == "policy-a.pdf"
     assert payload["citations"][0]["normalized_section"] == "coverage"
+    assert payload["citations"][0]["page"] == 2
     assert payload["search_profile"] == "payment_condition"
     assert payload["citations"][0]["score"] > 0.5
     assert payload["confidence_score"] > 0
+    assert isinstance(payload["tool_trace"], list)
+    assert isinstance(payload["tool_trace"][0], dict)
+    assert payload["tool_trace"][0]["tool_name"] == "policy_search_tool"
     assert "보험금 지급 여부는 실제 약관" in payload["disclaimer"]
     assert firestore_service.saved_interactions
 
@@ -272,11 +280,18 @@ def test_chat_major_coverage_question_retries_with_expanded_query() -> None:
     assert response.status_code == 200
     payload = response.json()
     sections = [citation["section"] for citation in payload["citations"]]
+    normalized_sections = [citation["normalized_section"] for citation in payload["citations"]]
     assert "상품 특이사항" in sections
     assert "보험금 지급사유" in sections
     assert "연금지급형태" in sections
+    assert normalized_sections[0] == "product_overview"
+    assert normalized_sections[1] == "coverage"
+    assert "product_overview" in normalized_sections
+    assert "coverage" in normalized_sections
     assert sections[0] != "보험료"
     assert payload["search_profile"] == "coverage_summary"
     assert payload["fallback_required"] is True
     assert payload["confidence_score"] <= 0.4
+    assert isinstance(payload["tool_trace"], list)
+    assert payload["tool_trace"][0]["input_summary"]["search_profile"] == "coverage_summary"
     assert firestore_service.saved_interactions

@@ -44,6 +44,12 @@ class FirestoreService(Protocol):
     ) -> dict[str, Any]:
         """Persist a chat interaction for audit and session review."""
 
+    def get_current_design(self, session_id: str) -> dict[str, Any] | None:
+        """Return the current design snapshot for a session when available."""
+
+    def save_current_design(self, session_id: str, design: dict[str, Any]) -> dict[str, Any]:
+        """Persist the current design snapshot for a session."""
+
 
 class GCPFirestoreService:
     """Firestore-backed implementation for document metadata storage."""
@@ -57,6 +63,7 @@ class GCPFirestoreService:
         self.database = database
         self.collection_name = collection_name
         self.chat_collection_name = "chat_sessions"
+        self.design_collection_name = "design_sessions"
         self._client = client
 
     def create_document(
@@ -143,3 +150,22 @@ class GCPFirestoreService:
         except ImportError as exc:
             raise RuntimeError("google-cloud-firestore is required for Firestore access.") from exc
         return firestore.Client(database=self.database)
+
+    def get_current_design(self, session_id: str) -> dict[str, Any] | None:
+        """Fetch a saved current design snapshot for a session."""
+        client = self._client or self._create_client()
+        snapshot = client.collection(self.design_collection_name).document(session_id).get()
+        if not snapshot.exists:
+            return None
+        return snapshot.to_dict()
+
+    def save_current_design(self, session_id: str, design: dict[str, Any]) -> dict[str, Any]:
+        """Persist the current design snapshot for a session."""
+        client = self._client or self._create_client()
+        payload = {
+            "session_id": session_id,
+            "current_design": design,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        client.collection(self.design_collection_name).document(session_id).set(payload)
+        return payload

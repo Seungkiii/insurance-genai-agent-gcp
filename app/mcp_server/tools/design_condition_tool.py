@@ -1,93 +1,100 @@
-"""Design condition adjustment tool for rider add/remove scenarios."""
+"""Design condition adjustment tool for current design state."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.services.firestore_service import FirestoreService
+
+from .base import BaseTool
+
 
 @dataclass
-class DesignConditionTool:
-    """Apply rider add/remove changes to a synthetic current design state."""
+class DesignConditionTool(BaseTool):
+    """Apply add/remove coverage changes to the current design snapshot."""
 
+    firestore_service: FirestoreService | None = None
     name: str = "design_condition_tool"
     description: str = (
-        "Apply add/remove rider operations to a synthetic current design state and return the updated design."
+        "Load current_design from Firestore, apply add/remove/keep coverage changes, and return both the original and updated design."
     )
     input_schema: dict[str, Any] = field(
         default_factory=lambda: {
             "type": "object",
             "properties": {
-                "current_design": {
-                    "type": "object",
-                    "properties": {
-                        "product_name": {"type": "string"},
-                        "payment_period": {"type": "string"},
-                        "insurance_period": {"type": "string"},
-                        "payment_cycle": {"type": "string"},
-                        "coverage_amount": {"type": "integer"},
-                        "riders": {"type": "array", "items": {"type": "string"}},
-                    },
-                },
-                "add_riders": {"type": "array", "items": {"type": "string"}},
-                "remove_riders": {"type": "array", "items": {"type": "string"}},
+                "session_id": {"type": "string"},
+                "add_coverages": {"type": "array", "items": {"type": "string"}},
+                "remove_coverages": {"type": "array", "items": {"type": "string"}},
+                "keep_coverages": {"type": "array", "items": {"type": "string"}},
             },
-            "required": ["current_design"],
+            "required": ["session_id"],
         }
     )
     output_schema: dict[str, Any] = field(
         default_factory=lambda: {
             "type": "object",
             "properties": {
-                "ok": {"type": "boolean"},
-                "tool_name": {"type": "string"},
+                "previous_design": {"type": "object"},
                 "updated_design": {"type": "object"},
                 "applied_changes": {"type": "object"},
             },
         }
     )
 
-    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Apply rider additions and removals to the current design."""
-        current_design = payload.get("current_design")
-        if not isinstance(current_design, dict):
-            return {
-                "ok": False,
-                "tool_name": self.name,
-                "error": "The 'current_design' field must be an object.",
-            }
+    def execute(self, payload: dict[str, Any], trace_summary: list[str]) -> dict[str, Any]:
+        """Load and update the session design state."""
+        if self.firestore_service is None:
+            raise RuntimeError("DesignConditionTool is not configured with a Firestore service.")
 
-        updated_design = dict(current_design)
-        riders = list(updated_design.get("riders", []))
-        add_riders = _normalize_riders(payload.get("add_riders", []))
-        remove_riders = _normalize_riders(payload.get("remove_riders", []))
+        session_id = str(payload.get("session_id", "")).strip()
+        if not session_id:
+            raise ValueError("The 'session_id' field is required.")
 
-        riders = [rider for rider in riders if rider not in remove_riders]
-        for rider in add_riders:
-            if rider not in riders:
-                riders.append(rider)
+        previous_record = self.firestore_service.get_current_design(session_id)
+        if previous_record is None:
+            raise ValueError("No current_design was found for the session.")
 
-        updated_design["riders"] = riders
+        previous_design = dict(previous_record.get("current_design", {}))
+        updated_design = dict(previous_design)
+        current_coverages = list(updated_design.get("coverages", []))
+        add_coverages = _normalize_items(payload.get("add_coverages", []))
+        remove_coverages = _normalize_items(payload.get("remove_coverages", []))
+        keep_coverages = _normalize_items(payload.get("keep_coverages", []))
+
+        if keep_coverages:
+            current_coverages = [coverage for coverage in current_coverages if coverage in keep_coverages]
+        current_coverages = [coverage for coverage in current_coverages if coverage not in remove_coverages]
+        for coverage in add_coverages:
+            if coverage not in current_coverages:
+                current_coverages.append(coverage)
+        updated_design["coverages"] = current_coverages
+
+        try:
+            self.firestore_service.save_current_design(session_id, updated_design)
+            trace_summary.append("current_design_saved=true")
+        except Exception as exc:  # noqa: BLE001
+            trace_summary.append("current_design_saved=false")
+            raise RuntimeError(f"Failed to persist current_design: {exc}") from exc
 
         return {
-            "ok": True,
-            "tool_name": self.name,
+            "session_id": session_id,
+            "previous_design": previous_design,
             "updated_design": updated_design,
             "applied_changes": {
-                "added_riders": add_riders,
-                "removed_riders": remove_riders,
-                "final_rider_count": len(riders),
+                "add_coverages": add_coverages,
+                "remove_coverages": remove_coverages,
+                "keep_coverages": keep_coverages,
             },
         }
 
 
-def _normalize_riders(value: Any) -> list[str]:
-    """Normalize rider list inputs."""
+def _normalize_items(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     normalized: list[str] = []
     for item in value:
-        rider = str(item).strip()
-        if rider:
-            normalized.append(rider)
+        text = str(item).strip()
+        if text:
+            normalized.append(text)
     return normalized

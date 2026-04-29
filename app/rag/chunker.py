@@ -23,6 +23,7 @@ class RAGChunk:
     product_type: str
     chunk_id: str
     page: int
+    end_page: int
     section: str
     normalized_section: str
     content: str
@@ -59,6 +60,7 @@ def chunk_document(
                     product_type=document.product_type,
                     chunk_id=f"{document.document_id}-chunk-{chunk_index:04d}",
                     page=section.page,
+                    end_page=section.end_page,
                     section=section.heading,
                     normalized_section=section.normalized_section,
                     content=part,
