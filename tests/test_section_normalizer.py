@@ -21,3 +21,11 @@ def test_normalize_section_maps_contract_disclosure_limitations_to_exclusions() 
 
 def test_normalize_section_keeps_real_benefit_content_as_coverage() -> None:
     assert normalize_section("보험금 지급사유 및 지급제한사항", "고도재해장해보험금, 장해지급률 80%, 보험금 1,000만원 지급 금액을 설명합니다.") == "coverage"
+
+
+def test_normalize_section_prioritizes_exclusions_when_payment_restrictions_dominate() -> None:
+    assert normalize_section("보험금 지급사유", "계약 전 알릴 의무, 고의 또는 중대한 과실, 보험금 지급이 제한되는 사유를 설명합니다.") == "exclusions"
+
+
+def test_normalize_section_prioritizes_coverage_when_benefit_terms_dominate() -> None:
+    assert normalize_section("보험금 지급사유", "급부명 고도재해장해보험금, 지급사유, 장해지급률 80% 이상, 1,000만원 지급금액을 안내합니다.") == "coverage"

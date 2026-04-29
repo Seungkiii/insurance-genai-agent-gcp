@@ -357,6 +357,13 @@ def _select_diverse_results(
                     for result in results
                     if result.chunk.normalized_section == normalized_section
                     and per_document_counts.get(result.chunk.document_id, 0) < top_k_per_document
+                    and not (
+                        normalized_section == "coverage"
+                        and any(
+                            term in result.chunk.content
+                            for term in ("계약 전 알릴 의무", "지급제한", "고의 또는 중대한 과실", "보험금 지급이 제한")
+                        )
+                    )
                 ),
                 None,
             )

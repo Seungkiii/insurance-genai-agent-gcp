@@ -22,8 +22,21 @@ class FakeRecommendTool:
                     "product_name": "Sample Care Plan",
                     "product_type": "health",
                     "focus_areas": ["주요 보장", "유의사항"],
+                    "main_focus": "상품 핵심 보장과 설명 포인트",
+                    "recommended_explanation_points": ["보험금 지급사유 중심으로 설명"],
+                    "caution_notes": ["지급 제한은 약관 확인 필요"],
+                    "evidence_summary": ["설명 근거 | coverage | 보험금 지급사유 | policy-a.pdf p.2"],
                 },
-                "current_design": {"coverages": ["기본보장"]},
+                "current_design": {
+                    "session_id": "session-1",
+                    "customer_profile": {"age_group": "30s"},
+                    "product_type": "health",
+                    "selected_document_ids": ["doc-1"],
+                    "focus_areas": ["주요 보장", "유의사항"],
+                    "caution_notes": ["지급 제한은 약관 확인 필요"],
+                    "evidence_summary": ["설명 근거 | coverage | 보험금 지급사유 | policy-a.pdf p.2"],
+                    "coverages": ["주요 보장", "유의사항"],
+                },
                 "citations": [
                     {
                         "document_name": "policy-a.pdf",
@@ -147,6 +160,6 @@ def test_recommendation_node_updates_agent_state() -> None:
 
     assert updated["recommended_design"] is not None
     assert updated["recommended_design"]["product_name"] == "Sample Care Plan"
-    assert updated["current_design"] == {"coverages": ["기본보장"]}
+    assert updated["current_design"]["product_type"] == "health"
     assert updated["search_profile"] == "coverage_summary"
     assert updated["citations"]
