@@ -69,6 +69,9 @@ class FirestoreService(Protocol):
         selected_product_names: list[str] | None = None,
         search_scope: str | None = None,
         search_scope_label: str | None = None,
+        resolved_document_ids: list[str] | None = None,
+        resolved_document_names: list[str] | None = None,
+        debug_info: dict[str, Any] | None = None,
         current_design: dict[str, Any] | None = None,
         intent: str | None = None,
         search_profile: str | None = None,
@@ -245,8 +248,6 @@ class GCPFirestoreService:
         }
         self._upsert_session(
             session_id,
-            selected_document_ids=_coerce_string_list(design.get("selected_document_ids")),
-            selected_product_names=_coerce_string_list(design.get("selected_product_names")),
             current_design=design,
             extra_fields={"updated_at": payload["updated_at"]},
         )
@@ -263,6 +264,9 @@ class GCPFirestoreService:
         selected_product_names: list[str] | None = None,
         search_scope: str | None = None,
         search_scope_label: str | None = None,
+        resolved_document_ids: list[str] | None = None,
+        resolved_document_names: list[str] | None = None,
+        debug_info: dict[str, Any] | None = None,
         current_design: dict[str, Any] | None = None,
         intent: str | None = None,
         search_profile: str | None = None,
@@ -287,18 +291,19 @@ class GCPFirestoreService:
             "search_scope_label": search_scope_label,
             "selected_product_names": selected_product_names or [],
             "selected_document_ids": document_ids or [],
+            "resolved_document_ids": resolved_document_ids or [],
+            "resolved_document_count": len(resolved_document_ids or []),
+            "resolved_document_names": resolved_document_names or [],
             "confidence_score": confidence_score,
             "fallback_required": fallback_required,
             "citations": citations or [],
             "tool_trace": tool_trace or [],
             "recommended_design": recommended_design,
             "current_design": current_design,
+            "debug_info": debug_info,
         }
         session_ref = self._upsert_session(
             session_id,
-            selected_document_ids=document_ids,
-            selected_product_names=selected_product_names,
-            search_scope=search_scope,
             current_design=current_design,
             extra_fields={"updated_at": created_at},
         )
@@ -378,7 +383,7 @@ class GCPFirestoreService:
                 if selected_product_names is not None
                 else existing.get("selected_product_names", [])
             ),
-            "search_scope": search_scope if search_scope is not None else existing.get("search_scope", "selected"),
+            "search_scope": search_scope if search_scope is not None else existing.get("search_scope", "all"),
             "current_design": current_design if current_design is not None else existing.get("current_design"),
         }
         if extra_fields:

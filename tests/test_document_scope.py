@@ -52,11 +52,50 @@ def test_request_document_ids_take_priority() -> None:
         session_id="session-1",
         firestore_service=service,  # type: ignore[arg-type]
         request_document_ids=["doc-1"],
+        request_search_scope=None,
         query="이 상품의 보장 내용을 알려줘",
     )
 
     assert scope.document_ids == ["doc-1"]
     assert scope.source == "request"
+
+
+def test_duplicated_request_document_ids_are_deduplicated() -> None:
+    service = StubFirestoreService()
+
+    scope = resolve_document_scope(
+        session_id="session-dedup",
+        firestore_service=service,  # type: ignore[arg-type]
+        request_document_ids=["doc-1", "doc-1", "doc-1"],
+        request_search_scope=None,
+        query="이 상품의 보장 내용을 알려줘",
+    )
+
+    assert scope.document_ids == ["doc-1"]
+    assert scope.invalid_document_ids == []
+
+
+def test_invalid_request_document_ids_are_removed_and_recorded() -> None:
+    service = StubFirestoreService()
+    service.session_contexts["session-invalid"] = {
+        "session_id": "session-invalid",
+        "selected_document_ids": ["doc-2"],
+        "selected_product_names": ["건강보험 A"],
+        "search_scope": "selected",
+    }
+
+    scope = resolve_document_scope(
+        session_id="session-invalid",
+        firestore_service=service,  # type: ignore[arg-type]
+        request_document_ids=["health-a.pdf", "", "missing-doc"],
+        request_search_scope=None,
+        query="유의사항도 알려줘",
+    )
+
+    assert scope.document_ids == ["doc-2"]
+    assert scope.source == "session"
+    assert "health-a.pdf" in scope.invalid_document_ids
+    assert "missing-doc" in scope.invalid_document_ids
 
 
 def test_session_selected_document_ids_are_used_when_request_is_empty() -> None:
@@ -72,6 +111,7 @@ def test_session_selected_document_ids_are_used_when_request_is_empty() -> None:
         session_id="session-2",
         firestore_service=service,  # type: ignore[arg-type]
         request_document_ids=None,
+        request_search_scope=None,
         query="유의사항도 알려줘",
     )
 
@@ -86,6 +126,7 @@ def test_all_indexed_documents_are_used_when_no_request_or_session_selection_exi
         session_id="session-3",
         firestore_service=service,  # type: ignore[arg-type]
         request_document_ids=None,
+        request_search_scope=None,
         query="건강보험 주요 보장 알려줘",
     )
 
@@ -101,6 +142,7 @@ def test_fallback_message_is_returned_when_no_indexed_documents_exist() -> None:
         session_id="session-4",
         firestore_service=service,  # type: ignore[arg-type]
         request_document_ids=None,
+        request_search_scope=None,
         query="이 상품의 주요 보장은 뭐야?",
     )
 
@@ -122,6 +164,28 @@ def test_search_scope_all_ignores_session_selected_documents() -> None:
         session_id="session-5",
         firestore_service=service,  # type: ignore[arg-type]
         request_document_ids=None,
+        request_search_scope=None,
+        query="여러 상품 중 어떤 상품이 적합해?",
+    )
+
+    assert set(scope.document_ids) == {"doc-1", "doc-2"}
+    assert scope.search_scope == "all"
+
+
+def test_request_search_scope_all_overrides_session_selected_documents() -> None:
+    service = StubFirestoreService()
+    service.session_contexts["session-6"] = {
+        "session_id": "session-6",
+        "selected_document_ids": ["doc-2"],
+        "selected_product_names": ["건강보험 A"],
+        "search_scope": "selected",
+    }
+
+    scope = resolve_document_scope(
+        session_id="session-6",
+        firestore_service=service,  # type: ignore[arg-type]
+        request_document_ids=None,
+        request_search_scope="all",
         query="여러 상품 중 어떤 상품이 적합해?",
     )
 

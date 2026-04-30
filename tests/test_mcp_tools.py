@@ -163,6 +163,25 @@ def test_policy_search_tool_uses_hybrid_rag_and_returns_fallback_signal() -> Non
     assert output["chunks"][0]["hybrid_score"] is not None
 
 
+def test_policy_search_tool_returns_annuity_payment_citations_for_pension_questions() -> None:
+    tool = create_policy_search_tool()
+
+    result = tool.run(
+        {
+            "query": "연금개시 후에는 어떤 방식으로 연금을 지급해?",
+            "document_ids": ["annuity-doc"],
+            "top_k": 3,
+        }
+    )
+
+    assert result["status"] == "success"
+    output = result["output"]
+    assert output["search_profile"] == "pension_payment"
+    assert output["citations"]
+    assert output["chunks"][0]["normalized_section"] == "annuity_payment"
+    assert output["fallback_required"] is False
+
+
 def test_product_recommend_tool_builds_product_type_specific_summary() -> None:
     policy_tool = create_policy_search_tool()
     tool = ProductRecommendTool(policy_search_tool=policy_tool, firestore_service=MockFirestoreService())

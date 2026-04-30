@@ -17,10 +17,7 @@ from app.rag.embedder import Embedder, VertexAIEmbedder
 from app.rag.generator import GeminiAnswerGenerator
 from app.rag.search_profiles import classify_search_profile
 from app.schemas.chat_schema import ChatRequest, ChatResponse
-from app.services.document_context_service import (
-    infer_selected_documents_from_result,
-    resolve_document_scope,
-)
+from app.services.document_context_service import resolve_document_scope
 from app.services.firestore_service import FirestoreService, GCPFirestoreService
 from app.services.gcp_storage_service import GCPStorageService, StorageService
 from app.services.vertex_ai_service import VertexAIEmbeddingService, VertexAIGenerationService
@@ -127,6 +124,7 @@ def chat(
         session_id=request.session_id,
         firestore_service=workflow_dependencies.firestore_service,
         request_document_ids=request.document_ids,
+        request_search_scope=request.search_scope,
         query=request.question,
         product_type_hint=None,
     )
@@ -146,11 +144,25 @@ def chat(
             search_scope_label=resolved_scope.search_scope_label,
             selected_product_names=resolved_scope.selected_product_names,
             selected_document_ids=resolved_scope.selected_document_ids,
+            resolved_document_ids=resolved_scope.document_ids,
+            resolved_document_count=len(resolved_scope.document_ids),
+            resolved_document_names=resolved_scope.selected_product_names,
             confidence_score=0.0,
             fallback_required=True,
             follow_up_questions=[],
             tool_trace=[],
             disclaimer=GUARDRAIL_DISCLAIMER,
+            debug_info={
+                "session_id": request.session_id,
+                "raw_request_document_ids": request.document_ids or [],
+                "request_search_scope": request.search_scope,
+                "search_scope": resolved_scope.search_scope,
+                "selected_document_ids": resolved_scope.selected_document_ids,
+                "resolved_document_ids": resolved_scope.document_ids,
+                "resolved_document_count": len(resolved_scope.document_ids),
+                "resolved_document_names": resolved_scope.selected_product_names,
+                "invalid_document_ids": resolved_scope.invalid_document_ids,
+            },
         )
 
     try:
@@ -162,6 +174,19 @@ def chat(
             selected_product_names=resolved_scope.selected_product_names,
             search_scope=resolved_scope.search_scope,
             search_scope_label=resolved_scope.search_scope_label,
+            resolved_document_ids=resolved_scope.document_ids,
+            resolved_document_names=resolved_scope.selected_product_names,
+            debug_info={
+                "session_id": request.session_id,
+                "raw_request_document_ids": request.document_ids or [],
+                "request_search_scope": request.search_scope,
+                "search_scope": resolved_scope.search_scope,
+                "selected_document_ids": resolved_scope.selected_document_ids,
+                "resolved_document_ids": resolved_scope.document_ids,
+                "resolved_document_count": len(resolved_scope.document_ids),
+                "resolved_document_names": resolved_scope.selected_product_names,
+                "invalid_document_ids": resolved_scope.invalid_document_ids,
+            },
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
@@ -173,54 +198,85 @@ def chat(
             },
         )
 
+    # Persist resolved scope into the session context so subsequent queries inherit it
+    try:
+        workflow_dependencies.firestore_service.update_session_context(
+            request.session_id,
+            selected_document_ids=resolved_scope.selected_document_ids or None,
+            selected_product_names=resolved_scope.selected_product_names or None,
+            search_scope=resolved_scope.search_scope,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "chat_session_context_update_failed",
+            extra={"session_id": request.session_id, "error": str(exc)},
+        )
+
     result = run_workflow(
         {
             "session_id": request.session_id,
             "user_query": request.question,
+            "raw_request_document_ids": request.document_ids or [],
             "document_ids": resolved_scope.document_ids,
             "selected_document_ids": resolved_scope.selected_document_ids,
             "selected_product_names": resolved_scope.selected_product_names,
             "search_scope": resolved_scope.search_scope,
             "search_scope_label": resolved_scope.search_scope_label,
+            "resolved_document_ids": resolved_scope.document_ids,
+            "resolved_document_names": resolved_scope.selected_product_names,
+            "invalid_document_ids": resolved_scope.invalid_document_ids,
+            "product_type_hint": _infer_product_type_hint(
+                workflow_dependencies.firestore_service,
+                resolved_scope.document_ids,
+            ),
             "top_k": request.top_k if request.top_k is not None else 5,
             "top_k_per_document": request.top_k_per_document if request.top_k_per_document is not None else 3,
             "started_at": time.perf_counter(),
         },
         workflow_dependencies,
     )
-
-    selected_document_ids, selected_product_names = infer_selected_documents_from_result(result)
-    if not selected_document_ids:
-        selected_document_ids = resolved_scope.selected_document_ids
-    if not selected_product_names:
-        selected_product_names = resolved_scope.selected_product_names
-
-    try:
-        existing_context = workflow_dependencies.firestore_service.get_session_context(request.session_id) or {}
-        next_search_scope = str(existing_context.get("search_scope") or "").strip() or (
-            "selected" if selected_document_ids else resolved_scope.search_scope
+    if resolved_scope.invalid_document_ids or request.document_ids or request.search_scope:
+        result.setdefault("tool_trace", [])
+        result["tool_trace"].append(
+            {
+                "step": len(result["tool_trace"]) + 1,
+                "tool_name": "document_scope_resolver",
+                "status": "warning",
+                "latency_ms": 0,
+                "input_summary": {
+                    "raw_request_document_ids": request.document_ids or [],
+                    "request_search_scope": request.search_scope,
+                },
+                "output_summary": {
+                    "selected_document_ids": resolved_scope.selected_document_ids,
+                    "resolved_document_ids": resolved_scope.document_ids,
+                    "resolved_document_names": resolved_scope.selected_product_names,
+                    "resolved_document_count": len(resolved_scope.document_ids),
+                    "search_scope": resolved_scope.search_scope,
+                    "invalid_document_ids": resolved_scope.invalid_document_ids,
+                },
+                "error": None,
+            }
         )
-        workflow_dependencies.firestore_service.update_session_context(
-            request.session_id,
-            selected_document_ids=selected_document_ids,
-            selected_product_names=selected_product_names,
-            search_scope=next_search_scope,
-            current_design=result.get("current_design"),
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "session_context_update_failed",
-            extra={"session_id": request.session_id, "error": str(exc)},
-        )
 
-    result["selected_document_ids"] = selected_document_ids
-    result["selected_product_names"] = selected_product_names
-    result["search_scope"] = result.get("search_scope") or resolved_scope.search_scope
-    result["search_scope_label"] = result.get("search_scope_label") or (
-        resolved_scope.search_scope_label
-        if result["search_scope"] == resolved_scope.search_scope
-        else ("전체 상품" if result["search_scope"] == "all" else f"선택 상품 {len(selected_product_names)}개")
-    )
+    result["selected_document_ids"] = resolved_scope.selected_document_ids
+    result["selected_product_names"] = resolved_scope.selected_product_names
+    result["search_scope"] = resolved_scope.search_scope
+    result["search_scope_label"] = resolved_scope.search_scope_label
+    result["resolved_document_ids"] = resolved_scope.document_ids
+    result["resolved_document_count"] = len(resolved_scope.document_ids)
+    result["resolved_document_names"] = resolved_scope.selected_product_names
+    result["debug_info"] = {
+        "session_id": request.session_id,
+        "raw_request_document_ids": request.document_ids or [],
+        "request_search_scope": request.search_scope,
+        "search_scope": resolved_scope.search_scope,
+        "selected_document_ids": resolved_scope.selected_document_ids,
+        "resolved_document_ids": resolved_scope.document_ids,
+        "resolved_document_count": len(resolved_scope.document_ids),
+        "resolved_document_names": resolved_scope.selected_product_names,
+        "invalid_document_ids": resolved_scope.invalid_document_ids,
+    }
 
     return ChatResponse(
         session_id=request.session_id,
@@ -234,11 +290,30 @@ def chat(
         search_profile=result.get("search_profile"),
         search_scope=result.get("search_scope"),
         search_scope_label=result.get("search_scope_label"),
-        selected_product_names=list(result.get("selected_product_names", selected_product_names)),
-        selected_document_ids=list(result.get("selected_document_ids", selected_document_ids)),
+        selected_product_names=list(result.get("selected_product_names", [])),
+        selected_document_ids=list(result.get("selected_document_ids", [])),
+        resolved_document_ids=list(result.get("resolved_document_ids", [])),
+        resolved_document_count=int(result.get("resolved_document_count", 0)),
+        resolved_document_names=list(result.get("resolved_document_names", [])),
         confidence_score=float(result.get("confidence_score", 0.0)),
         fallback_required=bool(result.get("fallback_required", False)),
         follow_up_questions=list(result.get("follow_up_questions", [])),
         tool_trace=list(result.get("tool_trace", [])),
         disclaimer=str(result.get("disclaimer", GUARDRAIL_DISCLAIMER)),
+        debug_info=result.get("debug_info"),
     )
+
+
+def _infer_product_type_hint(
+    firestore_service: FirestoreService,
+    document_ids: list[str],
+) -> str | None:
+    product_types: list[str] = []
+    for document_id in document_ids:
+        record = firestore_service.get_document(document_id)
+        product_type = str(record.get("product_type") or "").strip() if record else ""
+        if product_type and product_type not in product_types:
+            product_types.append(product_type)
+    if len(product_types) == 1:
+        return product_types[0]
+    return None

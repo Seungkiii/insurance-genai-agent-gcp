@@ -101,11 +101,12 @@ def test_embedding_retriever_loads_jsonl_and_sorts_by_cosine_similarity() -> Non
     )
     retriever = GcsEmbeddingRetriever(storage_service, "sample-bucket")
 
-    results = retriever.retrieve([0.9, 0.1, 0.0], ["doc-101"], top_k=2)
+    results, diagnostics = retriever.retrieve([0.9, 0.1, 0.0], ["doc-101"], top_k=2)
 
     assert len(results) == 2
     assert results[0].chunk.section == "보험금 지급"
     assert results[0].score > results[1].score
+    assert diagnostics["embedding_record_count"] == 2
 
 
 def test_cosine_similarity_handles_zero_vectors() -> None:
@@ -155,7 +156,7 @@ def test_embedding_retriever_boosts_coverage_sections_for_major_coverage_questio
     )
     retriever = GcsEmbeddingRetriever(storage_service, "sample-bucket")
 
-    results = retriever.retrieve(
+    results, diagnostics = retriever.retrieve(
         [1.0, 0.0],
         ["doc-202"],
         top_k=2,
@@ -165,6 +166,7 @@ def test_embedding_retriever_boosts_coverage_sections_for_major_coverage_questio
 
     assert results[0].chunk.section == "보험금 지급사유"
     assert results[0].score > results[1].score
+    assert diagnostics["embedding_record_count"] == 2
 
 
 def test_expand_query_adds_major_coverage_terms() -> None:

@@ -50,6 +50,7 @@ class AgentState(TypedDict, total=False):
 
     session_id: str
     user_query: str
+    raw_request_document_ids: list[str]
     document_ids: list[str]
     selected_document_ids: list[str]
     selected_product_names: list[str]
@@ -58,6 +59,7 @@ class AgentState(TypedDict, total=False):
     intent: IntentType
     extracted_slots: dict[str, Any]
     search_profile: str | None
+    search_profiles: list[str]
     search_scope: str | None
     search_scope_label: str | None
     product_type_hint: str | None
@@ -73,6 +75,10 @@ class AgentState(TypedDict, total=False):
     answer: str
     disclaimer: str
     follow_up_questions: list[str]
+    resolved_document_ids: list[str]
+    resolved_document_names: list[str]
+    invalid_document_ids: list[str]
+    debug_info: dict[str, Any] | None
     next_action: str
     error: str | None
     started_at: float

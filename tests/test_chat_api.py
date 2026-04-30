@@ -113,6 +113,9 @@ class FakeFirestoreService:
         selected_product_names: list[str] | None = None,
         search_scope: str | None = None,
         search_scope_label: str | None = None,
+        resolved_document_ids: list[str] | None = None,
+        resolved_document_names: list[str] | None = None,
+        debug_info: dict[str, Any] | None = None,
         current_design: dict[str, Any] | None = None,
         intent: str | None = None,
         search_profile: str | None = None,
@@ -134,11 +137,14 @@ class FakeFirestoreService:
             "search_profile": search_profile,
             "search_scope": search_scope,
             "search_scope_label": search_scope_label,
+            "resolved_document_ids": resolved_document_ids or [],
+            "resolved_document_names": resolved_document_names or [],
             "confidence_score": confidence_score,
             "fallback_required": fallback_required,
             "citations": citations or [],
             "tool_trace": tool_trace or [],
             "recommended_design": recommended_design,
+            "debug_info": debug_info,
             "created_at": "2026-04-30T00:00:00+00:00",
         }
         self.saved_messages.append(payload)
@@ -322,7 +328,8 @@ def test_chat_works_without_document_ids_using_indexed_documents() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["answer"]
-    assert payload["selected_document_ids"] == ["coverage-doc"]
+    assert payload["selected_document_ids"] == []
+    assert payload["resolved_document_ids"] == ["coverage-doc"]
     assert policy_tool.calls[0]["document_ids"] == ["coverage-doc"]
 
 
@@ -382,6 +389,82 @@ def test_chat_reuses_session_selected_documents_on_follow_up_question() -> None:
     assert second_response.status_code == 200
     assert policy_tool.calls[0]["document_ids"] == ["coverage-doc"]
     assert policy_tool.calls[1]["document_ids"] == ["coverage-doc"]
+
+
+def test_chat_keeps_same_session_document_scope_across_multiple_questions() -> None:
+    client, firestore_service, policy_tool, _, _ = create_test_client(
+        policy_output={
+            "search_profile": "pension_payment",
+            "product_type": "annuity",
+            "document_type": "product_summary",
+            "normalized_section": ["annuity_payment"],
+            "chunks": [
+                {
+                    "document_id": "630e5103-61d3-44c3-8efe-646c6be9ec60",
+                    "document_name": "2025041516121911948953.pdf",
+                    "document_type": "product_summary",
+                    "product_type": "annuity",
+                    "page": 9,
+                    "section": "연금지급형태",
+                    "normalized_section": "annuity_payment",
+                    "content": "연금개시후 연금지급형태와 생존연금 구조를 설명합니다.",
+                }
+            ],
+            "citations": [
+                {
+                    "document_name": "2025041516121911948953.pdf",
+                    "page": 9,
+                    "section": "연금지급형태",
+                    "normalized_section": "annuity_payment",
+                    "document_type": "product_summary",
+                    "product_type": "annuity",
+                    "content_preview": "연금개시후 연금지급형태와 생존연금 구조를 설명합니다.",
+                    "score": 0.9,
+                }
+            ],
+            "confidence_score": 0.9,
+            "fallback_required": False,
+        }
+    )
+    firestore_service.documents = {
+        "630e5103-61d3-44c3-8efe-646c6be9ec60": {
+            "document_id": "630e5103-61d3-44c3-8efe-646c6be9ec60",
+            "file_name": "2025041516121911948953.pdf",
+            "document_name": "2025041516121911948953.pdf",
+            "product_name": "무배당엔젤하이브리드연금보험 상품요약서",
+            "status": "indexed",
+            "product_type": "annuity",
+            "document_type": "product_summary",
+        }
+    }
+    firestore_service.update_session_context(
+        "session-stable-scope",
+        selected_document_ids=["630e5103-61d3-44c3-8efe-646c6be9ec60"],
+        selected_product_names=["무배당엔젤하이브리드연금보험 상품요약서"],
+        search_scope="selected",
+    )
+
+    questions = [
+        "이 상품의 주요 보장 내용은 뭐야?",
+        "이 상품을 어떤 유형의 고객에게 추천해줄수 있어?",
+        "연금개시 후에는 어떤 방식으로 연금을 지급해?",
+        "이 상품의 주요 보장 내용은 뭐야?",
+    ]
+    responses = [
+        client.post("/api/v1/chat", json={"question": question, "session_id": "session-stable-scope"})
+        for question in questions
+    ]
+
+    assert all(response.status_code == 200 for response in responses)
+    assert [call["document_ids"] for call in policy_tool.calls] == [
+        ["630e5103-61d3-44c3-8efe-646c6be9ec60"],
+        ["630e5103-61d3-44c3-8efe-646c6be9ec60"],
+        ["630e5103-61d3-44c3-8efe-646c6be9ec60"],
+        ["630e5103-61d3-44c3-8efe-646c6be9ec60"],
+    ]
+    assert responses[2].json()["search_profile"] == "pension_payment"
+    assert responses[2].json()["citations"]
+    assert responses[0].json()["resolved_document_ids"] == responses[3].json()["resolved_document_ids"]
 
 
 def test_chat_requests_more_information_when_fallback_required() -> None:
