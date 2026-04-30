@@ -99,7 +99,7 @@ class EmbeddingRetriever(Protocol):
         question: str | None = None,
         search_profile: SearchProfile | None = None,
         top_k_per_document: int = 3,
-    ) -> list[RetrievalResult]:
+    ) -> tuple[list[RetrievalResult], dict[str, int]] | list[RetrievalResult]:
         """Return the most relevant chunks using vector similarity."""
 
 
@@ -138,10 +138,11 @@ class GcsEmbeddingRetriever:
         question: str | None = None,
         search_profile: SearchProfile | None = None,
         top_k_per_document: int = 3,
-    ) -> list[RetrievalResult]:
+    ) -> tuple[list[RetrievalResult], dict[str, int]]:
         """Search document embedding artifacts using cosine similarity plus metadata boosts."""
         candidates: list[RetrievalResult] = []
         query_tokens = _tokenize(question or "")
+        embedding_record_count = 0
 
         for document_id in document_ids:
             gcs_uri = f"gs://{self.bucket_name}/indexes/{document_id}/embeddings.jsonl"
@@ -153,6 +154,7 @@ class GcsEmbeddingRetriever:
             for line in payload.splitlines():
                 if not line.strip():
                     continue
+                embedding_record_count += 1
                 record = json.loads(line)
                 chunk = RAGChunk(
                     document_id=record["document_id"],
@@ -184,11 +186,14 @@ class GcsEmbeddingRetriever:
                 )
 
         candidates.sort(key=lambda item: item.hybrid_score or item.score, reverse=True)
-        return _select_diverse_results(
-            candidates,
-            top_k=top_k,
-            top_k_per_document=top_k_per_document,
-            search_profile=search_profile,
+        return (
+            _select_diverse_results(
+                candidates,
+                top_k=top_k,
+                top_k_per_document=top_k_per_document,
+                search_profile=search_profile,
+            ),
+            {"embedding_record_count": embedding_record_count},
         )
 
 
@@ -320,11 +325,13 @@ def _prioritize_results(
 def _compute_exact_keyword_boost(query_tokens: set[str], chunk: RAGChunk) -> float:
     normalized_content = chunk.content.lower()
     normalized_section = f"{chunk.section} {chunk.normalized_section}".lower()
+    normalized_content_no_space = normalized_content.replace(" ", "")
+    normalized_section_no_space = normalized_section.replace(" ", "")
     boost = 0.0
     for token in query_tokens:
-        if token in normalized_section:
+        if token in normalized_section or token in normalized_section_no_space:
             boost += 0.03
-        elif token in normalized_content:
+        elif token in normalized_content or token in normalized_content_no_space:
             boost += 0.015
     if chunk.normalized_section == "coverage" and any(
         term in normalized_content
@@ -347,8 +354,13 @@ def _select_diverse_results(
     seen_page_keys: set[tuple[str, int]] = set()
     seen_section_keys: set[tuple[str, str]] = set()
 
-    if search_profile and search_profile.name == "coverage_summary":
-        for normalized_section in ("product_overview", "coverage", "annuity_payment"):
+    if search_profile and search_profile.name in {"coverage_summary", "pension_payment"}:
+        prioritized_sections = (
+            ("product_overview", "coverage", "annuity_payment")
+            if search_profile.name == "coverage_summary"
+            else ("annuity_payment", "product_overview", "eligibility")
+        )
+        for normalized_section in prioritized_sections:
             if len(selected) >= top_k:
                 break
             candidate = next(

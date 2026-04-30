@@ -125,6 +125,7 @@ class ProductRecommendTool(BaseTool):
             customer_profile=payload.get("customer_profile", {}),
             product_type=product_type,
             selected_document_ids=[str(item) for item in payload.get("document_ids", []) if str(item).strip()],
+            selected_product_names=_collect_selected_product_names(citations, search_output.get("chunks", [])),
             focus_areas=focus_areas,
             caution_notes=caution_notes,
             evidence_summary=evidence_summary,
@@ -184,6 +185,7 @@ class ProductRecommendTool(BaseTool):
                 {
                     "document_id": record["document_id"],
                     "document_name": record.get("file_name"),
+                    "product_name": record.get("product_name") or record.get("document_name") or record.get("file_name"),
                     "product_type": record.get("product_type"),
                     "recommendation_reason": _build_product_recommendation_reason(
                         record.get("product_type"),
@@ -207,6 +209,7 @@ class ProductRecommendTool(BaseTool):
                 customer_profile=customer_profile,
                 product_type=str(top_product.get("product_type") or "unknown"),
                 selected_document_ids=[str(top_product.get("document_id") or "")],
+                selected_product_names=[str(top_product.get("product_name") or top_product.get("document_name") or "")],
                 focus_areas=_build_focus_areas(str(top_product.get("product_type") or "unknown")),
                 caution_notes=list(dict.fromkeys(caution_notes)),
                 evidence_summary=_build_evidence_summary(all_citations),
@@ -318,6 +321,7 @@ def _build_current_design(
     customer_profile: dict[str, Any],
     product_type: str,
     selected_document_ids: list[str],
+    selected_product_names: list[str],
     focus_areas: list[str],
     caution_notes: list[str],
     evidence_summary: list[str],
@@ -327,11 +331,26 @@ def _build_current_design(
         "customer_profile": customer_profile,
         "product_type": product_type,
         "selected_document_ids": selected_document_ids,
+        "selected_product_names": [name for name in selected_product_names if name],
         "focus_areas": focus_areas,
         "caution_notes": caution_notes,
         "evidence_summary": evidence_summary,
         "coverages": focus_areas,
     }
+
+
+def _collect_selected_product_names(
+    citations: list[dict[str, Any]],
+    chunks: list[dict[str, Any]],
+) -> list[str]:
+    names = [str(citation.get("document_name") or "").strip() for citation in citations if str(citation.get("document_name") or "").strip()]
+    if names:
+        return list(dict.fromkeys(names))
+    return [
+        str(chunk.get("document_name") or "").strip()
+        for chunk in chunks
+        if str(chunk.get("document_name") or "").strip()
+    ]
 
 
 def _build_product_recommendation_reason(

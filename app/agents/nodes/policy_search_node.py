@@ -14,6 +14,8 @@ def run_policy_search_node(state: AgentState, dependencies: WorkflowDependencies
         "query": state.get("user_query", ""),
         "document_ids": state.get("document_ids", []),
         "top_k": state.get("top_k", 5),
+        "top_k_per_document": state.get("top_k_per_document", 3),
+        "search_profiles": state.get("search_profiles", []),
     }
     if state.get("product_type_hint"):
         payload["product_type"] = state["product_type_hint"]
@@ -29,8 +31,12 @@ def run_policy_search_node(state: AgentState, dependencies: WorkflowDependencies
             "latency_ms": result["latency_ms"],
             "input_summary": {
                 "query": payload["query"],
+                "raw_request_document_ids": state.get("raw_request_document_ids", []),
+                "resolved_document_ids": state.get("resolved_document_ids", state.get("document_ids", [])),
                 "document_ids": payload.get("document_ids", []),
                 "top_k": payload["top_k"],
+                "top_k_per_document": payload["top_k_per_document"],
+                "search_profiles": payload.get("search_profiles", []),
                 "product_type_hint": payload.get("product_type"),
             },
             "output_summary": _policy_output_summary(result.get("output")),
@@ -67,10 +73,15 @@ def _policy_output_summary(output: dict[str, Any] | None) -> dict[str, object] |
         "search_profile": output.get("search_profile"),
         "citation_count": len(output.get("citations", [])),
         "chunk_count": len(output.get("chunks", [])),
+        "candidate_document_count": output.get("candidate_document_count"),
+        "candidate_document_ids": output.get("candidate_document_ids"),
+        "embedding_record_count": output.get("embedding_record_count"),
+        "selected_result_count": output.get("selected_result_count"),
         "product_type": output.get("product_type"),
         "document_type": output.get("document_type"),
         "normalized_section": output.get("normalized_section", []),
         "fallback_required": output.get("fallback_required"),
+        "fallback_reason": output.get("fallback_reason"),
         "confidence_score": output.get("confidence_score"),
     }
 

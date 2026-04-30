@@ -67,6 +67,7 @@ class FakeFirestoreService:
     def __init__(self) -> None:
         self.saved_interactions: list[dict[str, Any]] = []
         self.saved_designs: list[dict[str, Any]] = []
+        self.saved_messages: list[dict[str, Any]] = []
 
     def save_chat_interaction(
         self,
@@ -95,6 +96,57 @@ class FakeFirestoreService:
         self.saved_interactions.append(payload)
         return payload
 
+    def save_session_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        *,
+        message_id: str | None = None,
+        document_ids: list[str] | None = None,
+        selected_product_names: list[str] | None = None,
+        search_scope: str | None = None,
+        search_scope_label: str | None = None,
+        resolved_document_ids: list[str] | None = None,
+        resolved_document_names: list[str] | None = None,
+        debug_info: dict[str, Any] | None = None,
+        current_design: dict[str, Any] | None = None,
+        intent: str | None = None,
+        search_profile: str | None = None,
+        confidence_score: float | None = None,
+        fallback_required: bool | None = None,
+        citations: list[dict[str, Any]] | None = None,
+        tool_trace: list[dict[str, Any]] | None = None,
+        recommended_design: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "session_id": session_id,
+            "message_id": message_id or f"{role}-{len(self.saved_messages) + 1}",
+            "role": role,
+            "content": content,
+            "selected_document_ids": document_ids or [],
+            "selected_product_names": selected_product_names or [],
+            "current_design": current_design,
+            "intent": intent,
+            "search_profile": search_profile,
+            "search_scope": search_scope,
+            "search_scope_label": search_scope_label,
+            "resolved_document_ids": resolved_document_ids or [],
+            "resolved_document_names": resolved_document_names or [],
+            "confidence_score": confidence_score,
+            "fallback_required": fallback_required,
+            "citations": citations or [],
+            "tool_trace": tool_trace or [],
+            "recommended_design": recommended_design,
+            "debug_info": debug_info,
+            "created_at": "2026-04-30T00:00:00+00:00",
+        }
+        self.saved_messages.append(payload)
+        return payload
+
+    def get_session_messages(self, session_id: str) -> list[dict[str, Any]]:
+        return [message for message in self.saved_messages if message["session_id"] == session_id]
+
     def get_current_design(self, session_id: str) -> dict[str, Any] | None:
         return {"session_id": session_id, "current_design": {"coverages": ["기본보장"]}}
 
@@ -105,18 +157,28 @@ class FakeFirestoreService:
 
 
 class FailingFirestoreService(FakeFirestoreService):
-    def save_chat_interaction(
+    def save_session_message(
         self,
         session_id: str,
-        user_message: str,
-        assistant_answer: str,
-        citations: list[dict[str, Any]],
-        latency_ms: int,
+        role: str,
+        content: str,
         *,
-        tool_trace: list[dict[str, Any]] | None = None,
+        message_id: str | None = None,
+        document_ids: list[str] | None = None,
+        selected_product_names: list[str] | None = None,
+        search_scope: str | None = None,
+        search_scope_label: str | None = None,
+        resolved_document_ids: list[str] | None = None,
+        resolved_document_names: list[str] | None = None,
+        debug_info: dict[str, Any] | None = None,
         current_design: dict[str, Any] | None = None,
         intent: str | None = None,
         search_profile: str | None = None,
+        confidence_score: float | None = None,
+        fallback_required: bool | None = None,
+        citations: list[dict[str, Any]] | None = None,
+        tool_trace: list[dict[str, Any]] | None = None,
+        recommended_design: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         raise RuntimeError("firestore unavailable")
 

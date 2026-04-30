@@ -16,7 +16,7 @@ class FakeVertexAI:
 
 
 def test_init_vertex_ai_uses_global_base_endpoint_for_global_location() -> None:
-    """Global location should use the location-invariant API host."""
+    """Global location should be mapped to us-central1 for SDK compatibility."""
     fake_vertexai = FakeVertexAI()
 
     _init_vertex_ai(fake_vertexai, project_id="demo-project", location="global")
@@ -24,8 +24,7 @@ def test_init_vertex_ai_uses_global_base_endpoint_for_global_location() -> None:
     assert fake_vertexai.calls == [
         {
             "project": "demo-project",
-            "location": "global",
-            "api_endpoint": "aiplatform.googleapis.com",
+            "location": "us-central1",
         }
     ]
 

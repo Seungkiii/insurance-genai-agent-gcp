@@ -25,10 +25,23 @@ def run_slot_extract_node(state: AgentState) -> AgentState:
 
     updated = dict(state)
     updated["document_ids"] = list(state.get("document_ids", []))
+    updated["selected_document_ids"] = list(state.get("selected_document_ids", updated["document_ids"]))
+    updated["selected_product_names"] = list(state.get("selected_product_names", []))
     updated["top_k"] = int(state.get("top_k", 5))
     updated["top_k_per_document"] = int(state.get("top_k_per_document", 3))
-    updated["search_profile"] = profile.name
-    updated["product_type_hint"] = _detect_product_type_hint(query, profile)
+    inferred_product_type_hint = _detect_product_type_hint(query, profile)
+    updated["product_type_hint"] = inferred_product_type_hint or state.get("product_type_hint")
+    updated["search_profiles"] = _resolve_search_profiles(
+        intent=str(state.get("intent", "general")),
+        base_profile=profile,
+        product_type_hint=updated.get("product_type_hint"),
+    )
+    updated["search_profile"] = updated["search_profiles"][0]
+    updated["search_scope"] = str(state.get("search_scope") or ("selected" if updated["document_ids"] else "all"))
+    updated["search_scope_label"] = str(
+        state.get("search_scope_label")
+        or ("전체 상품" if updated["search_scope"] == "all" else f"선택 상품 {len(updated['selected_document_ids'])}개")
+    )
     updated["extracted_slots"] = slots
     updated["comparison_mode"] = profile.name == "product_comparison" or len(updated["document_ids"]) > 1
     updated.setdefault("tool_trace", [])
@@ -37,6 +50,10 @@ def run_slot_extract_node(state: AgentState) -> AgentState:
     updated.setdefault("recommended_products", [])
     updated.setdefault("comparison_result", None)
     updated.setdefault("fallback_required", False)
+    updated.setdefault("resolved_document_ids", list(state.get("resolved_document_ids", [])))
+    updated.setdefault("resolved_document_names", list(state.get("resolved_document_names", [])))
+    updated.setdefault("invalid_document_ids", list(state.get("invalid_document_ids", [])))
+    updated.setdefault("debug_info", state.get("debug_info"))
     updated["next_action"] = "route_tools"
     return updated
 
@@ -109,3 +126,28 @@ def _detect_product_type_hint(query: str, profile: SearchProfile) -> str | None:
 def _extract_risk_needs(query: str) -> list[str]:
     risk_tokens = ("암", "치아", "치료비", "사망보장", "노후", "연금", "상해", "재해", "건강", "질병")
     return [token for token in risk_tokens if token in query]
+
+
+def _resolve_search_profiles(
+    *,
+    intent: str,
+    base_profile: SearchProfile,
+    product_type_hint: str | None,
+) -> list[str]:
+    if intent != "single_product_advice":
+        return [base_profile.name]
+
+    primary = "coverage_summary" if base_profile.name == "general_policy_qa" else base_profile.name
+    companion_profile_map = {
+        "annuity": "pension_payment",
+        "cancer": "cancer_coverage",
+        "dental": "dental_coverage",
+        "whole_life": "death_benefit",
+        "health": "health_coverage",
+        "accident": "accident_coverage",
+    }
+    profiles = [primary]
+    companion = companion_profile_map.get(str(product_type_hint or "").strip())
+    if companion and companion not in profiles:
+        profiles.append(companion)
+    return profiles

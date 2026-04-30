@@ -200,6 +200,7 @@ Base path: `/api/v1`
 | `POST` | `/documents/upload` | synthetic sample 문서 업로드 placeholder |
 | `POST` | `/documents/index` | 문서 인덱싱 placeholder |
 | `GET` | `/sessions/{session_id}` | 세션 이력 조회 |
+| `GET` | `/sessions/{session_id}/messages` | 채팅방 UI용 메시지 목록 조회 |
 | `POST` | `/feedback` | 피드백 저장 |
 | `GET` | `/admin/failed-questions` | fallback/실패 질문 조회 |
 | `GET` | `/admin/statistics` | 관리자 통계 조회 |
@@ -216,18 +217,20 @@ Base path: `/api/v1`
 
 현재 endpoint 일부는 PoC scaffold 단계이며, synthetic sample 응답 중심으로 동작합니다.
 
+`/demo`는 실제 채팅방 형태의 웹 UI로 동작합니다. 브라우저 `localStorage`에 저장한 `session_id`를 기준으로 같은 대화 이력을 다시 불러오며, 사용자는 `document_id`를 직접 입력할 필요 없이 상품 선택 또는 전체 검색 토글만으로 질문할 수 있습니다. 답변 말풍선 하단에서 `citations`, `tool_trace`, `recommended_design`, `current_design`을 접기/펼치기 형태로 확인할 수 있고, Cloud Run 배포 URL에서도 동일한 시나리오를 데모할 수 있습니다.
+
 ## 11. Demo Scenario
 
 포트폴리오 데모 예시 흐름:
 
-1. synthetic sample 약관 문서를 로드하거나 인덱싱
-2. `/chat`으로 약관 질문 입력
-3. 관련 조항 검색 및 citation 포함 응답 반환
-4. 가입설계 추천 질문 입력
-5. 가입설계 이력 기반 추천 결과 반환
-6. 설계 조건 변경 질문 입력
-7. 현재 설계 수정안 반환
-8. 세션/피드백/관리자 지표 확인
+1. `/demo`에서 채팅방 UI로 접속
+2. `session_id` 기반으로 이전 대화 이력을 자동 복원
+3. 문서 설정에서 상품 선택 또는 전체 검색 범위만 지정
+4. 사용자 말풍선과 AI 말풍선 형태로 답변 확인
+5. 답변 하단에서 `citations`와 `tool_trace` 펼쳐 근거와 Agent 흐름 확인
+6. 가입설계 추천 질문으로 `recommended_design` 확인
+7. 설계 변경 질문으로 `current_design` 상태 변화 확인
+8. Cloud Run 배포 URL 또는 Swagger로 같은 API 시나리오 재검증
 
 예시 질문:
 
