@@ -219,26 +219,7 @@ Base path: `/api/v1`
 
 `/demo`는 실제 채팅방 형태의 웹 UI로 동작합니다. 브라우저 `localStorage`에 저장한 `session_id`를 기준으로 같은 대화 이력을 다시 불러오며, 사용자는 `document_id`를 직접 입력할 필요 없이 상품 선택 또는 전체 검색 토글만으로 질문할 수 있습니다. 답변 말풍선 하단에서 `citations`, `tool_trace`, `recommended_design`, `current_design`을 접기/펼치기 형태로 확인할 수 있고, Cloud Run 배포 URL에서도 동일한 시나리오를 데모할 수 있습니다.
 
-## 11. Demo Scenario
-
-포트폴리오 데모 예시 흐름:
-
-1. `/demo`에서 채팅방 UI로 접속
-2. `session_id` 기반으로 이전 대화 이력을 자동 복원
-3. 문서 설정에서 상품 선택 또는 전체 검색 범위만 지정
-4. 사용자 말풍선과 AI 말풍선 형태로 답변 확인
-5. 답변 하단에서 `citations`와 `tool_trace` 펼쳐 근거와 Agent 흐름 확인
-6. 가입설계 추천 질문으로 `recommended_design` 확인
-7. 설계 변경 질문으로 `current_design` 상태 변화 확인
-8. Cloud Run 배포 URL 또는 Swagger로 같은 API 시나리오 재검증
-
-예시 질문:
-
-- "입원일당 청구 서류는 무엇인가요?"
-- "30s 여성에게 Sample Care Plan 기준으로 추천 설계안을 알려줘."
-- "월 보험료 부담을 낮추도록 보장금액을 줄이고 납입기간을 짧게 바꿔줘."
-
-## 12. Security Considerations
+## 11. Security Considerations
 
 이 저장소는 공개 포트폴리오 및 데모를 안전하게 구성하기 위해 아래 원칙을 따릅니다.
 
@@ -257,7 +238,7 @@ Base path: `/api/v1`
 - 입력 필터링 / prompt guardrail
 - 역할 기반 권한 관리
 
-## 13. Cost Strategy
+## 12. Cost Strategy
 
 이번 PoC는 기능 검증 이전에 비용이 과도하게 늘어나지 않도록 설계했습니다.
 
@@ -270,7 +251,7 @@ Base path: `/api/v1`
 
 이 방식은 기능 검증과 비용 통제를 함께 달성하기 위한 MVP 전략입니다.
 
-## 14. Future Improvements
+## 13. Future Improvements
 
 - 실제 LangGraph `StateGraph` 기반 orchestration으로 전환
 - Vertex AI Embedding 기반 retriever 적용
@@ -283,5 +264,3 @@ Base path: `/api/v1`
 - 간단한 demo UI 추가
 
 ---
-
-이 프로젝트는 규제 산업에 가까운 문서 중심 도메인에서, GenAI 시스템을 어떻게 안전하고 모듈화된 구조로 설계할 수 있는지 보여주기 위한 포트폴리오형 PoC입니다. 핵심은 실제 데이터를 노출하는 것이 아니라, synthetic sample 기반으로도 충분히 설계 사고와 시스템 구조를 설명할 수 있다는 점입니다.
