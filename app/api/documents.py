@@ -6,6 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 from collections import Counter
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
@@ -21,6 +22,7 @@ from app.schemas.document_schema import (
     DocumentRecord,
     DocumentUploadResponse,
 )
+from app.services.document_context_service import derive_product_name
 from app.services.firestore_service import FirestoreService, GCPFirestoreService
 from app.services.gcp_storage_service import GCPStorageService, StorageService
 from app.services.vertex_ai_service import VertexAIEmbeddingService
@@ -91,6 +93,8 @@ async def upload_document(
         file_name=file_name_only,
         gcs_uri=gcs_uri,
         status="uploaded",
+        document_name=file_name_only,
+        product_name=derive_product_name(file_name_only),
     )
     document_type = classify_document_type("", file_name_only)
     product_type = classify_product_type("", file_name_only)
@@ -168,8 +172,11 @@ def index_document(
             "indexed",
             error_message=None,
             chunk_count=len(chunks),
+            indexed_at=datetime.now(timezone.utc).isoformat(),
             product_type=parsed_document.product_type,
             document_type=parsed_document.document_type,
+            product_name=record.get("product_name") or derive_product_name(record["file_name"]),
+            document_name=record.get("document_name", record["file_name"]),
         )
         response_record = updated or record
         return DocumentIndexResponse(

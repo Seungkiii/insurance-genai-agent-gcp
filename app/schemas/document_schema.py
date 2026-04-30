@@ -10,11 +10,14 @@ class DocumentRecord(BaseModel):
 
     document_id: str
     file_name: str
+    document_name: str | None = None
+    product_name: str | None = None
     status: str
     gcs_uri: str
     product_type: str | None = None
     document_type: str | None = None
     created_at: str | None = None
+    indexed_at: str | None = None
     error_message: str | None = None
 
 

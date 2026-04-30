@@ -7,109 +7,124 @@
     <link rel="stylesheet" href="/static/demo.css" />
   </head>
   <body>
-    <main class="page-shell">
-      <section class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Insurance Workflow Demo</p>
-          <h1>Multi-Product RAG Chatbot</h1>
-          <p class="hero-text">
-            상품 설명, 약관 질의, 메타데이터 기반 citation, tool trace를 한 번에 확인하는 데모 UI입니다.
-          </p>
+    <main class="chat-layout">
+      <header class="chat-header">
+        <div>
+          <p class="header-eyebrow">Insurance Demo</p>
+          <h1>Insurance GenAI Agent</h1>
         </div>
-        <div class="hero-panel">
-          <label class="field">
-            <span>Session ID</span>
-            <input id="sessionId" type="text" value="demo-session-001" />
+        <div class="header-actions">
+          <div class="session-pill">
+            <span>Session</span>
+            <strong id="sessionIdLabel">-</strong>
+          </div>
+          <button id="newChatButton" class="header-button header-button-primary" type="button">새 채팅</button>
+          <button
+            id="settingsToggleButton"
+            class="header-button"
+            type="button"
+            aria-expanded="false"
+            aria-controls="settingsPanel"
+          >
+            문서 설정
+          </button>
+        </div>
+      </header>
+
+      <section id="settingsPanel" class="settings-panel hidden">
+        <div class="settings-grid">
+          <section class="product-selector">
+            <div class="selector-header">
+              <div>
+                <strong>상품 선택</strong>
+                <p id="selectedProductsLabel">전체 상품에서 검색 중</p>
+              </div>
+              <label class="toggle-field">
+                <input id="searchAllToggle" type="checkbox" />
+                <span>전체 상품에서 검색</span>
+              </label>
+            </div>
+            <div id="productList" class="product-list"></div>
+            <details class="advanced-details">
+              <summary>고급 설정</summary>
+              <div id="selectedDocumentIdsPreview" class="document-id-preview">선택된 document_id가 없습니다.</div>
+            </details>
+            <details class="advanced-details">
+              <summary>디버그 정보</summary>
+              <div id="debugPanel" class="document-id-preview">아직 디버그 정보가 없습니다.</div>
+            </details>
+          </section>
+          <label class="field field-compact">
+            <span>top_k</span>
+            <input id="topKInput" type="number" min="1" max="20" value="5" />
           </label>
-          <label class="field">
-            <span>Document IDs</span>
-            <input id="documentIds" type="text" placeholder="doc-001,doc-002" />
+          <label class="field field-compact">
+            <span>top_k_per_document</span>
+            <input id="topKPerDocumentInput" type="number" min="1" max="10" value="3" />
           </label>
-          <label class="field">
-            <span>Top K</span>
-            <input id="topK" type="number" min="1" max="20" value="5" />
-          </label>
+          <div class="settings-summary">
+            <span>연결 문서 수</span>
+            <strong id="documentCountLabel">0</strong>
+          </div>
         </div>
       </section>
 
-      <section class="question-panel">
-        <div class="panel-header">
-          <h2>질문 입력</h2>
-          <p>상품군별 예시를 눌러 바로 테스트할 수 있습니다.</p>
+      <section class="chat-shell">
+        <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+        <div class="chat-input-area">
+          <div class="demo-question-bar" id="demoQuestionBar">
+            <button class="demo-question-button" type="button" data-question="이 상품의 주요 보장 내용은 뭐야?">
+              이 상품의 주요 보장 내용은 뭐야?
+            </button>
+            <button class="demo-question-button" type="button" data-question="연금개시 후에는 어떤 방식으로 연금을 지급해?">
+              연금개시 후에는 어떤 방식으로 연금을 지급해?
+            </button>
+            <button
+              class="demo-question-button"
+              type="button"
+              data-question="55세 남성 고객에게 이 상품을 설명한다면 어떤 보장과 유의사항 중심으로 안내하면 좋을까?"
+            >
+              55세 남성 고객 안내 포인트
+            </button>
+            <button
+              class="demo-question-button"
+              type="button"
+              data-question="방금 추천 설명에서 사망보장이 없다는 점은 유지하고, 공시이율 변동 유의사항을 더 강조해줘."
+            >
+              설계 설명 수정 요청
+            </button>
+            <button class="demo-question-button" type="button" data-question="여러 상품 중 55세 남성 고객에게 적합한 상품을 추천해줘.">
+              여러 상품 추천
+            </button>
+          </div>
+
+          <div class="composer">
+            <label class="composer-field" for="questionInput">
+              <textarea
+                id="questionInput"
+                rows="1"
+                placeholder="질문을 입력하세요. Enter 전송, Shift+Enter 줄바꿈"
+              ></textarea>
+            </label>
+            <button id="sendButton" class="send-button" type="button">전송</button>
+          </div>
+
+          <div id="errorBox" class="error-box hidden"></div>
         </div>
-
-        <div class="demo-buttons">
-          <button class="demo-question" data-question="이 상품의 주요 보장 내용은 뭐야?">공통</button>
-          <button class="demo-question" data-question="연금개시 후에는 어떤 방식으로 연금을 지급해?">연금</button>
-          <button class="demo-question" data-question="보험료와 수수료 구조를 알려줘.">보험료</button>
-          <button class="demo-question" data-question="해약환급금은 어떻게 산출돼?">환급금</button>
-          <button class="demo-question" data-question="암 진단비는 어떤 경우에 지급돼?">암보험</button>
-          <button class="demo-question" data-question="임플란트 보장은 어떻게 돼?">치아보험</button>
-          <button class="demo-question" data-question="사망보험금이 체증되는 구조야?">종신보험</button>
-        </div>
-
-        <label class="field field-large">
-          <span>Question</span>
-          <textarea id="questionInput" rows="4" placeholder="질문을 입력하세요."></textarea>
-        </label>
-
-        <div class="actions">
-          <button id="sendButton" class="send-button">질문 보내기</button>
-          <div id="loadingIndicator" class="loading-indicator hidden">응답을 불러오는 중...</div>
-        </div>
-        <div id="errorBox" class="error-box hidden"></div>
-      </section>
-
-      <section class="response-grid">
-        <article class="card answer-card">
-          <div class="panel-header">
-            <h2>Answer</h2>
-          </div>
-          <div id="answerContent" class="answer-content empty-state">아직 응답이 없습니다.</div>
-        </article>
-
-        <article class="card meta-card">
-          <div class="panel-header">
-            <h2>Meta</h2>
-          </div>
-          <dl id="metaGrid" class="meta-grid">
-            <div><dt>Intent</dt><dd>-</dd></div>
-            <div><dt>Search Profile</dt><dd>-</dd></div>
-            <div><dt>Confidence</dt><dd>-</dd></div>
-            <div><dt>Fallback</dt><dd>-</dd></div>
-          </dl>
-        </article>
-
-        <article class="card">
-          <div class="panel-header">
-            <h2>Citations</h2>
-          </div>
-          <div id="citationsList" class="card-list empty-state">citation이 없습니다.</div>
-        </article>
-
-        <article class="card">
-          <div class="panel-header">
-            <h2>Tool Trace</h2>
-          </div>
-          <div id="toolTraceList" class="timeline empty-state">tool trace가 없습니다.</div>
-        </article>
-
-        <article class="card">
-          <div class="panel-header">
-            <h2>Recommended Design</h2>
-          </div>
-          <div id="recommendedDesignCard" class="json-card empty-state">recommended_design이 없습니다.</div>
-        </article>
-
-        <article class="card">
-          <div class="panel-header">
-            <h2>Current Design</h2>
-          </div>
-          <div id="currentDesignCard" class="json-card empty-state">current_design이 없습니다.</div>
-        </article>
       </section>
     </main>
 
+    <template id="welcomeMessageTemplate">
+      <div class="message-row system">
+        <div class="system-card">
+          <strong>새 대화를 시작할 준비가 되었습니다.</strong>
+          <p>문서 설정을 조정한 뒤 질문을 보내면, 근거와 Agent 동작 흐름까지 함께 확인할 수 있습니다.</p>
+        </div>
+      </div>
+    </template>
+
+    <script src="/static/demo_state.js"></script>
     <script src="/static/demo.js"></script>
   </body>
 </html>
