@@ -25,9 +25,16 @@ def run_slot_extract_node(state: AgentState) -> AgentState:
 
     updated = dict(state)
     updated["document_ids"] = list(state.get("document_ids", []))
+    updated["selected_document_ids"] = list(state.get("selected_document_ids", updated["document_ids"]))
+    updated["selected_product_names"] = list(state.get("selected_product_names", []))
     updated["top_k"] = int(state.get("top_k", 5))
     updated["top_k_per_document"] = int(state.get("top_k_per_document", 3))
     updated["search_profile"] = profile.name
+    updated["search_scope"] = str(state.get("search_scope") or ("selected" if updated["document_ids"] else "all"))
+    updated["search_scope_label"] = str(
+        state.get("search_scope_label")
+        or ("전체 상품" if updated["search_scope"] == "all" else f"선택 상품 {len(updated['selected_document_ids'])}개")
+    )
     updated["product_type_hint"] = _detect_product_type_hint(query, profile)
     updated["extracted_slots"] = slots
     updated["comparison_mode"] = profile.name == "product_comparison" or len(updated["document_ids"]) > 1

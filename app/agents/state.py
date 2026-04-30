@@ -51,11 +51,15 @@ class AgentState(TypedDict, total=False):
     session_id: str
     user_query: str
     document_ids: list[str]
+    selected_document_ids: list[str]
+    selected_product_names: list[str]
     top_k: int
     top_k_per_document: int
     intent: IntentType
     extracted_slots: dict[str, Any]
     search_profile: str | None
+    search_scope: str | None
+    search_scope_label: str | None
     product_type_hint: str | None
     retrieved_chunks: list[dict[str, Any]]
     citations: list[CitationState]

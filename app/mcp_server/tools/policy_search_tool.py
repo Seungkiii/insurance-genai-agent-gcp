@@ -35,6 +35,7 @@ class PolicySearchTool(BaseTool):
                 "query": {"type": "string"},
                 "document_ids": {"type": "array", "items": {"type": "string"}},
                 "top_k": {"type": "integer", "default": 5, "minimum": 1, "maximum": 20},
+                "top_k_per_document": {"type": "integer", "default": 3, "minimum": 1, "maximum": 10},
                 "product_type": {"type": "string"},
             },
             "required": ["query"],
@@ -65,6 +66,7 @@ class PolicySearchTool(BaseTool):
             raise RuntimeError("PolicySearchTool is not configured with storage, embedder, firestore, and bucket_name.")
 
         top_k = int(payload.get("top_k", 5))
+        top_k_per_document = int(payload.get("top_k_per_document", 3))
         requested_document_ids = [str(item) for item in payload.get("document_ids", []) if str(item).strip()]
         requested_product_type = _optional_string(payload.get("product_type"))
 
@@ -91,7 +93,7 @@ class PolicySearchTool(BaseTool):
             top_k=top_k,
             question=query,
             search_profile=search_profile,
-            top_k_per_document=2 if search_profile.name == "product_comparison" else 3,
+            top_k_per_document=2 if search_profile.name == "product_comparison" else top_k_per_document,
         )
 
         fallback_required = _requires_fallback(results, search_profile)

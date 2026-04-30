@@ -14,6 +14,7 @@ def run_policy_search_node(state: AgentState, dependencies: WorkflowDependencies
         "query": state.get("user_query", ""),
         "document_ids": state.get("document_ids", []),
         "top_k": state.get("top_k", 5),
+        "top_k_per_document": state.get("top_k_per_document", 3),
     }
     if state.get("product_type_hint"):
         payload["product_type"] = state["product_type_hint"]
@@ -31,6 +32,7 @@ def run_policy_search_node(state: AgentState, dependencies: WorkflowDependencies
                 "query": payload["query"],
                 "document_ids": payload.get("document_ids", []),
                 "top_k": payload["top_k"],
+                "top_k_per_document": payload["top_k_per_document"],
                 "product_type_hint": payload.get("product_type"),
             },
             "output_summary": _policy_output_summary(result.get("output")),
@@ -49,6 +51,10 @@ def run_policy_search_node(state: AgentState, dependencies: WorkflowDependencies
     output = result["output"] or {}
     updated["retrieved_chunks"] = list(output.get("chunks", []))
     updated["citations"] = list(output.get("citations", []))
+    updated["selected_document_ids"] = _collect_document_ids(updated["retrieved_chunks"]) or list(
+        updated.get("selected_document_ids", updated.get("document_ids", []))
+    )
+    updated["selected_product_names"] = _collect_product_names(updated["retrieved_chunks"])
     updated["search_profile"] = str(output.get("search_profile") or updated.get("search_profile"))
     updated["product_type_hint"] = str(output.get("product_type") or updated.get("product_type_hint") or "")
     if not updated["product_type_hint"]:
@@ -97,3 +103,21 @@ def _build_comparison_result(chunks: list[dict[str, Any]]) -> dict[str, Any]:
         else:
             target["caution_points"].append(line)
     return {"products": list(grouped.values())}
+
+
+def _collect_document_ids(chunks: list[dict[str, Any]]) -> list[str]:
+    document_ids: list[str] = []
+    for chunk in chunks:
+        document_id = str(chunk.get("document_id") or "").strip()
+        if document_id and document_id not in document_ids:
+            document_ids.append(document_id)
+    return document_ids
+
+
+def _collect_product_names(chunks: list[dict[str, Any]]) -> list[str]:
+    names: list[str] = []
+    for chunk in chunks:
+        document_name = str(chunk.get("document_name") or "").strip()
+        if document_name and document_name not in names:
+            names.append(document_name)
+    return names

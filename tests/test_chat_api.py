@@ -52,6 +52,28 @@ class FakeFirestoreService:
     def __init__(self) -> None:
         self.saved_interactions: list[dict[str, Any]] = []
         self.saved_designs: list[dict[str, Any]] = []
+        self.saved_messages: list[dict[str, Any]] = []
+        self.documents = {
+            "doc-001": {
+                "document_id": "doc-001",
+                "file_name": "policy-a.pdf",
+                "document_name": "policy-a.pdf",
+                "product_name": "정책 A",
+                "status": "indexed",
+                "product_type": "health",
+                "document_type": "policy_terms",
+            },
+            "coverage-doc": {
+                "document_id": "coverage-doc",
+                "file_name": "annuity.pdf",
+                "document_name": "annuity.pdf",
+                "product_name": "무배당엔젤하이브리드연금보험",
+                "status": "indexed",
+                "product_type": "annuity",
+                "document_type": "product_summary",
+            },
+        }
+        self.session_contexts: dict[str, dict[str, Any]] = {}
 
     def save_chat_interaction(
         self,
@@ -80,12 +102,88 @@ class FakeFirestoreService:
         self.saved_interactions.append(payload)
         return payload
 
+    def save_session_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        *,
+        message_id: str | None = None,
+        document_ids: list[str] | None = None,
+        selected_product_names: list[str] | None = None,
+        search_scope: str | None = None,
+        search_scope_label: str | None = None,
+        current_design: dict[str, Any] | None = None,
+        intent: str | None = None,
+        search_profile: str | None = None,
+        confidence_score: float | None = None,
+        fallback_required: bool | None = None,
+        citations: list[dict[str, Any]] | None = None,
+        tool_trace: list[dict[str, Any]] | None = None,
+        recommended_design: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "session_id": session_id,
+            "message_id": message_id or f"{role}-{len(self.saved_messages) + 1}",
+            "role": role,
+            "content": content,
+            "selected_document_ids": document_ids or [],
+            "selected_product_names": selected_product_names or [],
+            "current_design": current_design,
+            "intent": intent,
+            "search_profile": search_profile,
+            "search_scope": search_scope,
+            "search_scope_label": search_scope_label,
+            "confidence_score": confidence_score,
+            "fallback_required": fallback_required,
+            "citations": citations or [],
+            "tool_trace": tool_trace or [],
+            "recommended_design": recommended_design,
+            "created_at": "2026-04-30T00:00:00+00:00",
+        }
+        self.saved_messages.append(payload)
+        return payload
+
+    def get_session_messages(self, session_id: str) -> list[dict[str, Any]]:
+        return [message for message in self.saved_messages if message["session_id"] == session_id]
+
+    def get_document(self, document_id: str) -> dict[str, Any] | None:
+        return self.documents.get(document_id)
+
+    def list_documents(self) -> list[dict[str, Any]]:
+        return list(self.documents.values())
+
+    def get_session_context(self, session_id: str) -> dict[str, Any] | None:
+        return self.session_contexts.get(session_id)
+
+    def update_session_context(
+        self,
+        session_id: str,
+        *,
+        selected_document_ids: list[str] | None = None,
+        selected_product_names: list[str] | None = None,
+        search_scope: str | None = None,
+        current_design: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        existing = self.session_contexts.get(session_id, {"session_id": session_id})
+        updated = {
+            **existing,
+            "session_id": session_id,
+            "selected_document_ids": selected_document_ids if selected_document_ids is not None else existing.get("selected_document_ids", []),
+            "selected_product_names": selected_product_names if selected_product_names is not None else existing.get("selected_product_names", []),
+            "search_scope": search_scope if search_scope is not None else existing.get("search_scope", "selected"),
+            "current_design": current_design if current_design is not None else existing.get("current_design"),
+        }
+        self.session_contexts[session_id] = updated
+        return updated
+
     def get_current_design(self, session_id: str) -> dict[str, Any] | None:
         return {"session_id": session_id, "current_design": {"coverages": ["기본보장"]}}
 
     def save_current_design(self, session_id: str, design: dict[str, Any]) -> dict[str, Any]:
         payload = {"session_id": session_id, "current_design": design}
         self.saved_designs.append(payload)
+        self.update_session_context(session_id, current_design=design)
         return payload
 
 
@@ -169,8 +267,121 @@ def test_chat_returns_grounded_answer_and_citations() -> None:
     assert payload["confidence_score"] == 0.84
     assert payload["fallback_required"] is False
     assert payload["tool_trace"][0]["tool_name"] == "policy_search_tool"
+    assert "session_id" in payload
+    assert "answer" in payload
+    assert "tool_trace" in payload
     assert policy_tool.calls[0]["document_ids"] == ["doc-001"]
-    assert firestore_service.saved_interactions
+    assert [message["role"] for message in firestore_service.saved_messages] == ["user", "assistant"]
+
+
+def test_chat_works_without_document_ids_using_indexed_documents() -> None:
+    client, firestore_service, policy_tool, _, _ = create_test_client(
+        policy_output={
+            "search_profile": "coverage_summary",
+            "product_type": "annuity",
+            "document_type": "product_summary",
+            "normalized_section": ["annuity_payment"],
+            "chunks": [
+                {
+                    "document_id": "coverage-doc",
+                    "document_name": "annuity.pdf",
+                    "document_type": "product_summary",
+                    "product_type": "annuity",
+                    "page": 9,
+                    "section": "연금지급형태",
+                    "normalized_section": "annuity_payment",
+                    "content": "연금개시후 연금지급형태를 안내합니다.",
+                }
+            ],
+            "citations": [
+                {
+                    "document_name": "annuity.pdf",
+                    "page": 9,
+                    "section": "연금지급형태",
+                    "normalized_section": "annuity_payment",
+                    "document_type": "product_summary",
+                    "product_type": "annuity",
+                    "content_preview": "연금개시후 연금지급형태를 안내합니다.",
+                    "score": 0.79,
+                }
+            ],
+            "confidence_score": 0.73,
+            "fallback_required": False,
+        }
+    )
+    firestore_service.documents = {"coverage-doc": firestore_service.documents["coverage-doc"]}
+
+    response = client.post(
+        "/api/v1/chat",
+        json={
+            "question": "연금개시 후에는 어떤 방식으로 연금을 지급해?",
+            "session_id": "session-no-docs",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"]
+    assert payload["selected_document_ids"] == ["coverage-doc"]
+    assert policy_tool.calls[0]["document_ids"] == ["coverage-doc"]
+
+
+def test_chat_reuses_session_selected_documents_on_follow_up_question() -> None:
+    client, firestore_service, policy_tool, _, _ = create_test_client(
+        policy_output={
+            "search_profile": "coverage_summary",
+            "product_type": "annuity",
+            "document_type": "product_summary",
+            "normalized_section": ["annuity_payment"],
+            "chunks": [
+                {
+                    "document_id": "coverage-doc",
+                    "document_name": "annuity.pdf",
+                    "document_type": "product_summary",
+                    "product_type": "annuity",
+                    "page": 9,
+                    "section": "연금지급형태",
+                    "normalized_section": "annuity_payment",
+                    "content": "연금개시후 연금지급형태를 안내합니다.",
+                }
+            ],
+            "citations": [
+                {
+                    "document_name": "annuity.pdf",
+                    "page": 9,
+                    "section": "연금지급형태",
+                    "normalized_section": "annuity_payment",
+                    "document_type": "product_summary",
+                    "product_type": "annuity",
+                    "content_preview": "연금개시후 연금지급형태를 안내합니다.",
+                    "score": 0.79,
+                }
+            ],
+            "confidence_score": 0.73,
+            "fallback_required": False,
+        }
+    )
+    firestore_service.documents = {"coverage-doc": firestore_service.documents["coverage-doc"]}
+
+    first_response = client.post(
+        "/api/v1/chat",
+        json={
+            "question": "연금개시 후에는 어떤 방식으로 연금을 지급해?",
+            "session_id": "session-follow-up",
+        },
+    )
+    second_response = client.post(
+        "/api/v1/chat",
+        json={
+            "question": "그럼 유의사항도 알려줘.",
+            "session_id": "session-follow-up",
+        },
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert policy_tool.calls[0]["document_ids"] == ["coverage-doc"]
+    assert policy_tool.calls[1]["document_ids"] == ["coverage-doc"]
 
 
 def test_chat_requests_more_information_when_fallback_required() -> None:
@@ -190,7 +401,7 @@ def test_chat_requests_more_information_when_fallback_required() -> None:
     response = client.post(
         "/api/v1/chat",
         json={
-            "question": "이 상품의 보장 내용을 알려줘.",
+            "question": "보장 내용을 알려줘.",
             "session_id": "session-002",
         },
     )
@@ -200,7 +411,35 @@ def test_chat_requests_more_information_when_fallback_required() -> None:
     assert payload["fallback_required"] is True
     assert payload["confidence_score"] == 0.2
     assert "질문 의도에 맞는 조항" in payload["answer"]
-    assert firestore_service.saved_interactions
+    assert firestore_service.saved_messages[-1]["role"] == "assistant"
+
+
+def test_chat_requests_product_clarification_when_scope_is_ambiguous() -> None:
+    client, _, _, _, _ = create_test_client(
+        policy_output={
+            "search_profile": "coverage_summary",
+            "product_type": "annuity",
+            "document_type": "product_summary",
+            "normalized_section": [],
+            "chunks": [],
+            "citations": [],
+            "confidence_score": 0.2,
+            "fallback_required": True,
+        }
+    )
+
+    response = client.post(
+        "/api/v1/chat",
+        json={
+            "question": "이 상품의 보장 내용을 알려줘.",
+            "session_id": "session-ambiguous",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "어떤 상품을 기준으로 확인할까요?" in payload["answer"]
+    assert payload["fallback_required"] is True
 
 
 def test_chat_design_recommendation_returns_recommended_and_current_design() -> None:
@@ -298,5 +537,5 @@ def test_chat_design_recommendation_returns_recommended_and_current_design() -> 
     assert payload["recommended_products"][0]["product_type"] == "annuity"
     assert payload["current_design"]["product_type"] == "annuity"
     assert recommendation_tool.calls
-    assert firestore_service.saved_interactions[0]["current_design"]["product_type"] == "annuity"
+    assert firestore_service.saved_messages[-1]["current_design"]["product_type"] == "annuity"
     assert firestore_service.saved_designs[0]["current_design"]["session_id"] == "session-003"
