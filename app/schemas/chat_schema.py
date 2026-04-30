@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1, validation_alias=AliasChoices("question", "query"))
     session_id: str
     document_ids: list[str] | None = None
+    search_scope: str | None = Field(default=None, pattern="^(selected|all)$")
     top_k: int | None = Field(default=None, ge=1, le=20)
     top_k_per_document: int | None = Field(default=None, ge=1, le=10)
 
@@ -67,11 +68,15 @@ class ChatResponse(BaseModel):
     search_scope_label: str | None = None
     selected_product_names: list[str] = Field(default_factory=list)
     selected_document_ids: list[str] = Field(default_factory=list)
+    resolved_document_ids: list[str] = Field(default_factory=list)
+    resolved_document_count: int = 0
+    resolved_document_names: list[str] = Field(default_factory=list)
     confidence_score: float
     fallback_required: bool | None = None
     follow_up_questions: list[str] = Field(default_factory=list)
     tool_trace: list[ToolTraceItem] = Field(default_factory=list)
     disclaimer: str
+    debug_info: dict[str, object] | None = None
 
 
 class SessionMessage(BaseModel):
@@ -87,12 +92,16 @@ class SessionMessage(BaseModel):
     search_scope_label: str | None = None
     selected_product_names: list[str] = Field(default_factory=list)
     selected_document_ids: list[str] = Field(default_factory=list)
+    resolved_document_ids: list[str] = Field(default_factory=list)
+    resolved_document_count: int = 0
+    resolved_document_names: list[str] = Field(default_factory=list)
     confidence_score: float | None = None
     fallback_required: bool | None = None
     citations: list[Citation] = Field(default_factory=list)
     tool_trace: list[ToolTraceItem] = Field(default_factory=list)
     recommended_design: dict[str, object] | None = None
     current_design: dict[str, object] | None = None
+    debug_info: dict[str, object] | None = None
 
 
 class SessionHistoryResponse(BaseModel):

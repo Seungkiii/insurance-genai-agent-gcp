@@ -48,16 +48,6 @@ def run_recommendation_node(state: AgentState, dependencies: WorkflowDependencie
     updated["recommended_design"] = output.get("recommended_design")
     updated["recommended_products"] = list(output.get("recommended_products", []))
     updated["current_design"] = output.get("current_design") or updated.get("current_design")
-    updated["selected_document_ids"] = _collect_document_ids(
-        updated["recommended_products"],
-        updated.get("current_design"),
-        updated.get("selected_document_ids", updated.get("document_ids", [])),
-    )
-    updated["selected_product_names"] = _collect_product_names(
-        updated["recommended_products"],
-        updated.get("current_design"),
-        updated.get("selected_product_names", []),
-    )
     if output.get("citations"):
         updated["citations"] = list(output["citations"])
     if output.get("search_profile"):
@@ -77,38 +67,3 @@ def _recommendation_output_summary(output: dict[str, Any] | None) -> dict[str, o
         "has_current_design": bool(output.get("current_design")),
         "fallback_required": output.get("fallback_required"),
     }
-
-
-def _collect_document_ids(
-    recommended_products: list[dict[str, Any]],
-    current_design: dict[str, Any] | None,
-    fallback_document_ids: list[str],
-) -> list[str]:
-    current_design_ids = list(current_design.get("selected_document_ids", [])) if current_design else []
-    if current_design_ids:
-        return [str(item) for item in current_design_ids if str(item).strip()]
-
-    document_ids: list[str] = []
-    for product in recommended_products:
-        document_id = str(product.get("document_id") or "").strip()
-        if document_id and document_id not in document_ids:
-            document_ids.append(document_id)
-    return document_ids or list(fallback_document_ids)
-
-
-def _collect_product_names(
-    recommended_products: list[dict[str, Any]],
-    current_design: dict[str, Any] | None,
-    fallback_product_names: list[str],
-) -> list[str]:
-    if current_design and isinstance(current_design.get("selected_product_names"), list):
-        names = [str(item).strip() for item in current_design["selected_product_names"] if str(item).strip()]
-        if names:
-            return names
-
-    names: list[str] = []
-    for product in recommended_products:
-        name = str(product.get("product_name") or product.get("document_name") or "").strip()
-        if name and name not in names:
-            names.append(name)
-    return names or list(fallback_product_names)
